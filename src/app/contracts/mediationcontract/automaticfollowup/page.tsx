@@ -50,7 +50,7 @@ type BooleanFilter = 'all' | 'true' | 'false';
 function useT(language: string) {
   return useMemo(() => {
     const map: Record<string, Record<string, string>> = {
-      pageTitle: { ar: 'لوحة المتابعة التلقائية', en: 'Automatic Follow-Up Dashboard' },
+      pageTitle: { ar: 'لوحة متابعة العقود', en: 'Contract Follow-Up Dashboard' },
       pageSubtitle: { ar: 'متابعة مراحل عقود الوساطة', en: 'Track mediation contract stages' },
       contractNumber: { ar: 'رقم العقد', en: 'Contract #' },
       workerName: { ar: 'اسم العامل', en: 'Worker Name' },

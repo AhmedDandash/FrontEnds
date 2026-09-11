@@ -55,7 +55,7 @@ const ROUTE_TITLES: Array<[string, Title]> = [
   ['/complaints', { ar: 'الشكاوى', en: 'Complaints' }],
 
   // Contracts — mediation
-  ['/contracts/mediationcontract/automaticfollowup', { ar: 'المتابعة التلقائية', en: 'Automatic Follow-up' }],
+  ['/contracts/mediationcontract/automaticfollowup', { ar: 'متابعة العقود', en: 'Contract Follow-Up' }],
   ['/contracts/mediationcontract/offers', { ar: 'عروض عقود الاستقدام', en: 'Mediation Offers' }],
   ['/contracts/mediationcontract/add', { ar: 'إضافة عقد استقدام', en: 'New Mediation Contract' }],
   ['/contracts/mediationcontract', { ar: 'عقود الاستقدام', en: 'Mediation Contracts' }],

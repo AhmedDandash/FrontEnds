@@ -210,7 +210,7 @@ export default function Sidebar({
             },
             {
               key: '/contracts/mediationcontract/automaticfollowup',
-              label: language === 'ar' ? 'المتابعة التلقائية' : 'Automatic Follow-up',
+              label: language === 'ar' ? 'متابعة العقود' : 'Contract Follow-Up',
             },
             {
               key: '/contracts/mediationcontract/offers',

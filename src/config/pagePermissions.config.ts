@@ -73,7 +73,7 @@ export const PAGE_REGISTRY: PageDef[] = [
 
   // ── Contracts ──
   { key: '/contracts/mediationcontract', labelAr: 'عقود الاستقدام', labelEn: 'Mediation Contracts', group: 'contracts', groupAr: 'العقود', groupEn: 'Contracts' },
-  { key: '/contracts/mediationcontract/automaticfollowup', labelAr: 'المتابعة التلقائية', labelEn: 'Automatic Follow-up', group: 'contracts', groupAr: 'العقود', groupEn: 'Contracts' },
+  { key: '/contracts/mediationcontract/automaticfollowup', labelAr: 'متابعة العقود', labelEn: 'Contract Follow-Up', group: 'contracts', groupAr: 'العقود', groupEn: 'Contracts' },
   { key: '/contracts/mediationcontract/offers', labelAr: 'عروض عقود الاستقدام', labelEn: 'Mediation Offers', group: 'contracts', groupAr: 'العقود', groupEn: 'Contracts' },
   { key: '/contracts/mediationrequests', labelAr: 'طلب عقد توسط', labelEn: 'Mediation Requests', group: 'contracts', groupAr: 'العقود', groupEn: 'Contracts' },
   { key: '/contracts/operation/rent', labelAr: 'عقود العاملات المقيمة', labelEn: 'Operation Contracts', group: 'contracts', groupAr: 'العقود', groupEn: 'Contracts' },
