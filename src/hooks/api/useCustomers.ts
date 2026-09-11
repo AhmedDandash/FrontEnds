@@ -6,11 +6,20 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { message } from 'antd';
 import { CustomerService } from '@/services';
-import type { CreateCustomerDto, UpdateCustomerDto } from '@/types/api.types';
+import type { Customer, CreateCustomerDto, UpdateCustomerDto } from '@/types/api.types';
 import type { CustomerQuery } from '@/types/filters.types';
 import { getApiErrorMessage } from '@/utils/api-error';
 
 const QUERY_KEY = 'customers';
+
+/** Fetch a single customer by ID — standalone (doesn't pull the full list). */
+export function useCustomerById(id: number | string | undefined | null) {
+  return useQuery<Customer>({
+    queryKey: [QUERY_KEY, id],
+    queryFn: () => CustomerService.getById(id!),
+    enabled: !!id,
+  });
+}
 
 /**
  * Server-side filtered + paginated customers (branch scoping, search, dates).

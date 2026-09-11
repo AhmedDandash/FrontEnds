@@ -191,7 +191,7 @@ function FlightForm() {
         <Input type="time" />
       </Form.Item>
 
-      <Form.Item name="DayReceipt" label="يوم استلام التذكرة">
+      <Form.Item name="DayReceipt" label="تاريخ استلام التذكرة">
         <Input type="date" />
       </Form.Item>
 

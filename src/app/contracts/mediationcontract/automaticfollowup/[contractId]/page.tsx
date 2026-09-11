@@ -1,43 +1,45 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Button,
   Spin,
   Empty,
-  Modal,
   Tag,
   Tooltip,
   Alert,
   Descriptions,
-  Steps,
   Card,
-  Dropdown,
+  Select,
+  Divider,
   message,
 } from 'antd';
-import type { MenuProps } from 'antd';
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
   MinusCircleOutlined,
-  EyeOutlined,
   EditOutlined,
   ReloadOutlined,
-  FlagOutlined,
-  DownOutlined,
+  UserOutlined,
+  IdcardOutlined,
+  GlobalOutlined,
+  CalendarOutlined,
+  FileTextOutlined,
+  SolutionOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/authStore';
 import { APP_PERMISSIONS } from '@/config/appPermissions';
 import { useHasPermission } from '@/hooks/api/usePagePermissions';
 import {
   useMediationFollowUpItems,
-  useMediationFollowUpItem,
   useUpdateFollowUpDescription,
-  useCompleteFollowUpItem,
 } from '@/hooks/api/useMediationFollowUp';
+import { useMediationContract } from '@/hooks/api/useMediationContracts';
+import { useCustomerById } from '@/hooks/api/useCustomers';
+import { useNationality } from '@/hooks/api/useNationalities';
 import { InputDescriptionModal } from '@/components/followup/InputDescriptionModal';
 import {
   hasFilledInputDescription,
@@ -47,6 +49,7 @@ import {
 } from '@/types/follow-up-forms.types';
 import { AUTHORIZATION_SYSTEM } from '@/constants/enums';
 import type { MediationFollowUpItem } from '@/types/api.types';
+import { formatDate } from '../../_lib/format';
 import styles from './ContractFollowUpDetail.module.css';
 
 // ── Translations ──────────────────────────────────────────────────────────────
@@ -57,11 +60,7 @@ function useT(language: string) {
       pageTitle: { ar: 'مراحل متابعة العقد', en: 'Contract Follow-Up Stages' },
       backToDashboard: { ar: 'العودة للوحة المتابعة', en: 'Back to Dashboard' },
       refresh: { ar: 'تحديث', en: 'Refresh' },
-      viewDetails: { ar: 'عرض التفاصيل', en: 'View Details' },
       fillForm: { ar: 'تعبئة البيانات', en: 'Fill Data' },
-      cancel: { ar: 'إلغاء', en: 'Cancel' },
-      save: { ar: 'حفظ', en: 'Save' },
-      close: { ar: 'إغلاق', en: 'Close' },
       description: { ar: 'الوصف / الملاحظات', en: 'Description / Notes' },
       statusPending: { ar: 'قيد الانتظار', en: 'Pending' },
       statusCompleted: { ar: 'مكتمل', en: 'Completed' },
@@ -69,30 +68,33 @@ function useT(language: string) {
       statusSkipped: { ar: 'متجاوز', en: 'Skipped' },
       dependsOn: { ar: 'تعتمد على', en: 'Depends on' },
       maxDays: { ar: 'الحد الأقصى (يوم)', en: 'Max Days' },
-      sortOrder: { ar: 'الترتيب', en: 'Order' },
       completedAt: { ar: 'تاريخ الإتمام', en: 'Completed At' },
-      notes: { ar: 'ملاحظات', en: 'Notes' },
       cannotCompleteMsg: {
         ar: 'لا يمكن تغيير الحالة حتى تكتمل المرحلة السابقة',
         en: 'Cannot change status until the previous stage is finished',
       },
-      fillFormFirstMsg: {
-        ar: 'يجب تعبئة بيانات المرحلة أولاً قبل تغيير حالتها',
-        en: 'You must fill in the stage data before changing its status',
-      },
       noItems: { ar: 'لا توجد مراحل متابعة لهذا العقد', en: 'No follow-up stages for this contract' },
-      detailsModalTitle: { ar: 'تفاصيل المرحلة', en: 'Stage Details' },
+      noItemsForFilter: { ar: 'لا توجد مراحل مطابقة لهذه التصفية', en: 'No stages match this filter' },
       inputDescription: { ar: 'البيانات المدخلة', en: 'Input Data' },
       loading: { ar: 'جاري التحميل...', en: 'Loading...' },
       dataSaved: { ar: 'تم حفظ بيانات المرحلة بنجاح', en: 'Stage data saved successfully' },
-      setResult: { ar: 'تحديث النتيجة', en: 'Set Result' },
-      markCompleted: { ar: 'وضع كمكتمل', en: 'Mark Completed' },
-      markFailed: { ar: 'وضع كفاشل', en: 'Mark Failed' },
-      markSkipped: { ar: 'وضع كمتجاوز', en: 'Mark Skipped' },
-      confirmSetResult: {
-        ar: 'تأكيد تغيير نتيجة هذه المرحلة؟',
-        en: 'Confirm changing this stage result?',
+      stagesListTitle: { ar: 'مراحل المتابعة', en: 'Follow-Up Stages' },
+      filterByResult: { ar: 'تصفية حسب الحالة', en: 'Filter by Status' },
+      filterAll: { ar: 'جميع الحالات', en: 'All Statuses' },
+      selectStagePrompt: {
+        ar: 'اختر مرحلة من القائمة لعرض تفاصيلها',
+        en: 'Select a stage from the list to view its details',
       },
+      summaryCustomerName: { ar: 'اسم العميل', en: 'Customer Name' },
+      summaryDob: { ar: 'تاريخ الميلاد', en: 'Date of Birth' },
+      summaryClientNationality: { ar: 'جنسية العميل', en: 'Client Nationality' },
+      summaryClientNationalId: { ar: 'رقم هوية العميل', en: 'Client National ID' },
+      summaryWorkerName: { ar: 'اسم العامل', en: 'Worker Name' },
+      summaryWorkerNationality: { ar: 'جنسية العامل', en: 'Worker Nationality' },
+      summaryWorkerPassport: { ar: 'رقم جواز العامل', en: 'Worker Passport No.' },
+      summaryAgentName: { ar: 'اسم الوكيل', en: 'Agent Name' },
+      summaryContractNumber: { ar: 'رقم العقد', en: 'Contract No.' },
+      summaryMusanedNumber: { ar: 'رقم مساند', en: 'Musaned No.' },
     };
     return (key: string) => map[key]?.[language] ?? map[key]?.['en'] ?? key;
   }, [language]);
@@ -113,12 +115,12 @@ function resultTag(result: number | null | undefined, t: (k: string) => string) 
   }
 }
 
-function stepStatus(result: number | null | undefined): 'finish' | 'process' | 'error' | 'wait' {
+function resultDotColor(result: number | null | undefined): string {
   switch (result) {
-    case 2: return 'finish';
-    case 3: return 'error';
-    case 4: return 'wait';
-    default: return 'process';
+    case 2: return '#52c41a';
+    case 3: return '#ff4d4f';
+    case 4: return '#8c8c8c';
+    default: return '#1677ff';
   }
 }
 
@@ -134,26 +136,45 @@ export default function ContractFollowUpDetailPage() {
   const { has } = useHasPermission();
   const canManageFollowUp = has(APP_PERMISSIONS.AUTOMATIC_FOLLOW_UP_MANAGE);
 
-  // Modals
-  const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [inputFormItem, setInputFormItem] = useState<MediationFollowUpItem | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [resultFilter, setResultFilter] = useState<'all' | '1' | '2' | '3' | '4'>('all');
 
   const { data: items = [], isLoading, refetch } = useMediationFollowUpItems(contractId);
-  const { data: detailItem, isLoading: detailLoading } = useMediationFollowUpItem(detailItemId);
+  const { data: contract, isLoading: contractLoading } = useMediationContract(contractId);
+  const { data: customer, isLoading: customerLoading } = useCustomerById(contract?.customerId);
+  const { data: customerNationality } = useNationality(customer?.nationality ?? '');
 
   const updateDescMutation = useUpdateFollowUpDescription(contractId);
-  const completeMutation = useCompleteFollowUpItem(contractId);
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
     [items]
   );
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  const filteredItems = useMemo(() => {
+    if (resultFilter === 'all') return sortedItems;
+    return sortedItems.filter((item) => String(item.result ?? 1) === resultFilter);
+  }, [sortedItems, resultFilter]);
 
-  const openDetail = (item: MediationFollowUpItem) => {
-    if (item.id) setDetailItemId(item.id);
-  };
+  // Keep a valid selection: default to the first stage, and re-pick when the
+  // active filter hides the currently selected one.
+  useEffect(() => {
+    if (filteredItems.length === 0) {
+      if (selectedItemId !== null) setSelectedItemId(null);
+      return;
+    }
+    if (!filteredItems.some((item) => item.id === selectedItemId)) {
+      setSelectedItemId(filteredItems[0].id ?? null);
+    }
+  }, [filteredItems, selectedItemId]);
+
+  const selectedItem = useMemo(
+    () => sortedItems.find((item) => item.id === selectedItemId) ?? null,
+    [sortedItems, selectedItemId]
+  );
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const openInputForm = (item: MediationFollowUpItem) => {
     if (!canManageFollowUp) return;
@@ -172,36 +193,6 @@ export default function ContractFollowUpDetailPage() {
     refetch();
   };
 
-  // Set an explicit stage result via ContractFollowUp/CompleteItem.
-  // result: 2 = Completed, 3 = Failed, 4 = Skipped. (Failed/Skipped cannot be
-  // produced by the Fill-Form/update-description path, which only auto-completes.)
-  const handleSetResult = (item: MediationFollowUpItem, result: 2 | 3 | 4) => {
-    if (!item.id) return;
-    if (!canManageFollowUp) return;
-    const labelMap: Record<number, string> = {
-      2: t('statusCompleted'),
-      3: t('statusFailed'),
-      4: t('statusSkipped'),
-    };
-    Modal.confirm({
-      title: t('confirmSetResult'),
-      content: `${labelMap[result] ?? ''} — ${isRTL ? item.statusNameAr : item.statusNameEn}`,
-      okText: t('save'),
-      cancelText: t('cancel'),
-      okButtonProps: result === 3 ? { danger: true } : undefined,
-      onOk: async () => {
-        await completeMutation.mutateAsync({
-          contractFollowUpItemId: item.id!,
-          completedAt: new Date().toISOString(),
-          notes: null,
-          result,
-        });
-        refetch();
-      },
-    });
-  };
-
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
@@ -212,82 +203,84 @@ export default function ContractFollowUpDetailPage() {
     );
   }
 
-  if (!isLoading && sortedItems.length === 0) {
-    return (
-      <div className={styles.container} dir={isRTL ? 'rtl' : 'ltr'}>
-        <PageHeader t={t} router={router} refetch={refetch} isLoading={isLoading} />
-        <div className={styles.centered}>
-          <Empty description={t('noItems')} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.container} dir={isRTL ? 'rtl' : 'ltr'}>
       {/* ── Header ── */}
       <PageHeader t={t} router={router} refetch={refetch} isLoading={isLoading} />
 
-      {/* ── Steps Overview ── */}
-      <Card className={styles.stepsCard} size="small">
-        <Steps
-          direction="horizontal"
-          size="small"
-          items={sortedItems.map((item) => ({
-            title: isRTL
-              ? item.statusNameAr || item.statusNameEn || '—'
-              : item.statusNameEn || item.statusNameAr || '—',
-            status: stepStatus(item.result),
-            icon:
-              item.result === 2 ? (
-                <CheckCircleOutlined />
-              ) : item.result === 3 ? (
-                <CloseCircleOutlined />
-              ) : undefined,
-          }))}
-          style={{ overflowX: 'auto' }}
-        />
-      </Card>
+      {/* ── Summary bar — always visible, independent of stage data being filled ── */}
+      <SummaryHeader
+        t={t}
+        isRTL={isRTL}
+        contract={contract}
+        customer={customer}
+        customerNationalityLabel={
+          isRTL ? customerNationality?.nationalityNameAr : customerNationality?.nationalityNameEn
+        }
+        loading={contractLoading || customerLoading}
+      />
 
-      {/* ── Items Cards ── */}
-      <div className={styles.itemsGrid}>
-        {sortedItems.map((item, idx) => (
-          <ItemCard
-            key={item.id ?? idx}
-            item={item}
-            idx={idx}
-            isRTL={isRTL}
-            t={t}
-            onViewDetail={openDetail}
-            onFillForm={openInputForm}
-            onSetResult={handleSetResult}
-            isSettingResult={completeMutation.isPending}
-            canManage={canManageFollowUp}
-          />
-        ))}
-      </div>
+      {!isLoading && sortedItems.length === 0 ? (
+        <div className={styles.centered}>
+          <Empty description={t('noItems')} />
+        </div>
+      ) : (
+        <div className={styles.layout}>
+          {/* ── Side rail: stage list ── */}
+          <aside className={styles.sidebar}>
+            <div className={styles.sidebarHeader}>
+              <span className={styles.sidebarTitle}>{t('stagesListTitle')}</span>
+            </div>
+            <Select
+              className={styles.sidebarFilter}
+              value={resultFilter}
+              onChange={(v) => setResultFilter(v)}
+              style={{ width: '100%' }}
+              options={[
+                { value: 'all', label: t('filterAll') },
+                { value: '1', label: t('statusPending') },
+                { value: '2', label: t('statusCompleted') },
+                { value: '3', label: t('statusFailed') },
+                { value: '4', label: t('statusSkipped') },
+              ]}
+            />
+            <div className={styles.sidebarList}>
+              {filteredItems.length === 0 ? (
+                <Empty description={t('noItemsForFilter')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              ) : (
+                filteredItems.map((item) => (
+                  <SidebarItem
+                    key={item.id}
+                    item={item}
+                    idx={sortedItems.findIndex((i) => i.id === item.id)}
+                    isRTL={isRTL}
+                    isActive={item.id === selectedItemId}
+                    onClick={() => setSelectedItemId(item.id ?? null)}
+                  />
+                ))
+              )}
+            </div>
+          </aside>
 
-      {/* ── Detail Modal ── */}
-      <Modal
-        open={!!detailItemId}
-        title={t('detailsModalTitle')}
-        onCancel={() => setDetailItemId(null)}
-        footer={[
-          <Button key="close" onClick={() => setDetailItemId(null)}>
-            {t('close')}
-          </Button>,
-        ]}
-        width={600}
-        destroyOnHidden
-      >
-        {detailLoading ? (
-          <div className={styles.centered}>
-            <Spin />
-          </div>
-        ) : detailItem ? (
-          <ItemDetailContent item={detailItem} isRTL={isRTL} t={t} />
-        ) : null}
-      </Modal>
+          {/* ── Center: selected stage details ── */}
+          <main className={styles.mainDetail}>
+            {selectedItem ? (
+              <StageDetailPanel
+                item={selectedItem}
+                idx={sortedItems.findIndex((i) => i.id === selectedItem.id)}
+                isRTL={isRTL}
+                t={t}
+                onFillForm={openInputForm}
+                canManage={canManageFollowUp}
+              />
+            ) : (
+              <Card className={styles.mainDetailCard}>
+                <Empty description={t('selectStagePrompt')} />
+              </Card>
+            )}
+          </main>
+        </div>
+      )}
 
       {/* ── Input Description (structured) Modal ── */}
       <InputDescriptionModal
@@ -297,7 +290,6 @@ export default function ContractFollowUpDetailPage() {
         onSave={handleInputFormSave}
         loading={updateDescMutation.isPending}
       />
-
     </div>
   );
 }
@@ -334,6 +326,67 @@ function PageHeader({
   );
 }
 
+// ── Summary header: key contract/customer/worker/agent facts, always shown ────
+
+function SummaryItem({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className={styles.summaryItem}>
+      <span className={styles.summaryIcon}>{icon}</span>
+      <div className={styles.summaryText}>
+        <span className={styles.summaryLabel}>{label}</span>
+        <span className={styles.summaryValue}>{value ?? '—'}</span>
+      </div>
+    </div>
+  );
+}
+
+function SummaryHeader({
+  t,
+  isRTL,
+  contract,
+  customer,
+  customerNationalityLabel,
+  loading,
+}: {
+  t: (k: string) => string;
+  isRTL: boolean;
+  contract: { customerName?: string | null; customerNationalId?: string | null; workerName?: string | null; workerNationalityAr?: string | null; workerPassportNumber?: string | null; agentName?: string | null; contractNumber?: number | null; musanedContractNumber?: string | null } | undefined;
+  customer: { dateOfBirth?: string | null; birthDate?: string | null } | undefined;
+  customerNationalityLabel?: string | null;
+  loading: boolean;
+}) {
+  const dob = formatDate(customer?.dateOfBirth || customer?.birthDate, isRTL ? 'ar' : 'en');
+
+  return (
+    <Card className={styles.summaryCard} size="small" loading={loading && !contract}>
+      <div className={styles.summaryGrid}>
+        {contract?.contractNumber != null && (
+          <SummaryItem icon={<FileTextOutlined />} label={t('summaryContractNumber')} value={`#${contract.contractNumber}`} />
+        )}
+        {contract?.musanedContractNumber && (
+          <SummaryItem icon={<FileTextOutlined />} label={t('summaryMusanedNumber')} value={contract.musanedContractNumber} />
+        )}
+        <SummaryItem icon={<UserOutlined />} label={t('summaryCustomerName')} value={contract?.customerName} />
+        <SummaryItem icon={<CalendarOutlined />} label={t('summaryDob')} value={dob} />
+        <SummaryItem icon={<GlobalOutlined />} label={t('summaryClientNationality')} value={customerNationalityLabel} />
+        <SummaryItem icon={<IdcardOutlined />} label={t('summaryClientNationalId')} value={contract?.customerNationalId} />
+        <SummaryItem icon={<UserOutlined />} label={t('summaryWorkerName')} value={contract?.workerName} />
+        <SummaryItem icon={<GlobalOutlined />} label={t('summaryWorkerNationality')} value={contract?.workerNationalityAr} />
+        <SummaryItem icon={<IdcardOutlined />} label={t('summaryWorkerPassport')} value={contract?.workerPassportNumber} />
+        <SummaryItem icon={<SolutionOutlined />} label={t('summaryAgentName')} value={contract?.agentName} />
+      </div>
+    </Card>
+  );
+}
+
 // ── Extract status label from inputDescription JSON ───────────────────────────
 
 function getInputDescriptionStatusLabel(item: MediationFollowUpItem): string | null {
@@ -364,143 +417,36 @@ function getInputDescriptionStatusLabel(item: MediationFollowUpItem): string | n
   return found?.labelAr ?? String(value);
 }
 
-function ItemCard({
+// ── Sidebar stage row ──────────────────────────────────────────────────────
+
+function SidebarItem({
   item,
   idx,
   isRTL,
-  t,
-  onViewDetail,
-  onFillForm,
-  onSetResult,
-  isSettingResult,
-  canManage,
+  isActive,
+  onClick,
 }: {
   item: MediationFollowUpItem;
   idx: number;
   isRTL: boolean;
-  t: (k: string) => string;
-  onViewDetail: (item: MediationFollowUpItem) => void;
-  onFillForm: (item: MediationFollowUpItem) => void;
-  onSetResult: (item: MediationFollowUpItem, result: 2 | 3 | 4) => void;
-  isSettingResult: boolean;
-  canManage: boolean;
+  isActive: boolean;
+  onClick: () => void;
 }) {
   const name = isRTL
     ? item.statusNameAr || item.statusNameEn
     : item.statusNameEn || item.statusNameAr;
-
-  const dependencyOk = item.canComplete === true;
-  const formFilled = hasFilledInputDescription(item.inputDescription);
   const isSettled = item.result != null && item.result !== 1;
 
-  const inputStatusLabel = getInputDescriptionStatusLabel(item);
-
-  // Stage-result menu (CompleteItem): Completed / Failed / Skipped.
-  const resultMenu: MenuProps = {
-    items: [
-      { key: '2', icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />, label: t('markCompleted') },
-      { key: '3', icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />, label: t('markFailed') },
-      { key: '4', icon: <MinusCircleOutlined style={{ color: '#8c8c8c' }} />, label: t('markSkipped') },
-    ],
-    onClick: ({ key }) => onSetResult(item, Number(key) as 2 | 3 | 4),
-  };
-
   return (
-    <Card
-      className={`${styles.itemCard} ${isSettled ? styles.itemCardCompleted : ''}`}
-      size="small"
+    <button
+      type="button"
+      className={`${styles.sidebarItem} ${isActive ? styles.sidebarItemActive : ''} ${isSettled ? styles.sidebarItemSettled : ''}`}
+      onClick={onClick}
     >
-      <div className={styles.itemCardHeader}>
-        <div className={styles.itemCardLeft}>
-          <span className={styles.itemIndex}>{idx + 1}</span>
-          <span className={styles.itemName}>{name || '—'}</span>
-        </div>
-        {/* Show inputDescription status if available, otherwise fall back to result tag */}
-        {inputStatusLabel
-          ? <Tag color="blue">{inputStatusLabel}</Tag>
-          : resultTag(item.result, t)
-        }
-      </div>
-
-      {/* ── Dependency warning ── */}
-      {!dependencyOk && !isSettled && (
-        <Alert
-          type="warning"
-          showIcon
-          message={t('cannotCompleteMsg')}
-          className={styles.dependsAlert}
-          banner
-        />
-      )}
-
-      {/* ── Fill-form required warning ── */}
-      {dependencyOk && !isSettled && !formFilled && (
-        <Alert
-          type="info"
-          showIcon
-          message={t('fillFormFirstMsg')}
-          className={styles.dependsAlert}
-          banner
-        />
-      )}
-
-      {/* ── Meta row ── */}
-      <div className={styles.itemMeta}>
-        {item.dependsOnStatusName && (
-          <span className={styles.metaItem}>
-            <span className={styles.metaLabel}>{t('dependsOn')}:</span>{' '}
-            {item.dependsOnStatusName}
-          </span>
-        )}
-        {item.maxDays != null && (
-          <span className={styles.metaItem}>
-            <span className={styles.metaLabel}>{t('maxDays')}:</span> {item.maxDays}
-          </span>
-        )}
-        {item.completedAt && (
-          <span className={styles.metaItem}>
-            <span className={styles.metaLabel}>{t('completedAt')}:</span>{' '}
-            {new Date(item.completedAt).toLocaleDateString()}
-          </span>
-        )}
-      </div>
-
-      {/* ── Actions ── */}
-      <div className={styles.itemActions}>
-        <Tooltip title={t('viewDetails')}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => onViewDetail(item)} />
-        </Tooltip>
-
-        {canManage && (
-          <Tooltip title={t('fillForm')}>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => onFillForm(item)}
-              type={formFilled ? 'default' : 'dashed'}
-            >
-              {t('fillForm')}
-            </Button>
-          </Tooltip>
-        )}
-
-        {/* Explicit result (Completed / Failed / Skipped) — only while the stage
-            is still open and its dependency is satisfied. */}
-        {canManage && !isSettled && (
-          <Tooltip title={dependencyOk ? '' : t('cannotCompleteMsg')}>
-            <Dropdown
-              menu={resultMenu}
-              trigger={['click']}
-              disabled={!dependencyOk || isSettingResult}
-            >
-              <Button size="small" icon={<FlagOutlined />} loading={isSettingResult}>
-                {t('setResult')} <DownOutlined />
-              </Button>
-            </Dropdown>
-          </Tooltip>
-        )}
-      </div>
-    </Card>
+      <span className={styles.sidebarItemIndex}>{idx + 1}</span>
+      <span className={styles.sidebarItemName}>{name || '—'}</span>
+      <span className={styles.sidebarItemDot} style={{ background: resultDotColor(item.result) }} />
+    </button>
   );
 }
 
@@ -519,7 +465,7 @@ const FIELD_LABELS: Record<string, { ar: string; en: string }> = {
   FlightNumber:          { ar: 'رقم الرحلة',             en: 'Flight Number' },
   FlightPlaceId:         { ar: 'مكان الرحلة',            en: 'Flight Place' },
   time:                  { ar: 'وقت الإقلاع',            en: 'Departure Time' },
-  DayReceipt:            { ar: 'يوم استلام التذكرة',     en: 'Receipt Day' },
+  DayReceipt:            { ar: 'تاريخ استلام التذكرة',   en: 'Ticket Receipt Date' },
   TimeReceipt:           { ar: 'وقت استلام التذكرة',     en: 'Receipt Time' },
 };
 
@@ -591,5 +537,95 @@ function ItemDetailContent({
       style={{ padding: '8px 0' }}
       dangerouslySetInnerHTML={{ __html: item.inputDescription }}
     />
+  );
+}
+
+// ── Center panel: full detail of the selected stage ───────────────────────────
+
+function StageDetailPanel({
+  item,
+  idx,
+  isRTL,
+  t,
+  onFillForm,
+  canManage,
+}: {
+  item: MediationFollowUpItem;
+  idx: number;
+  isRTL: boolean;
+  t: (k: string) => string;
+  onFillForm: (item: MediationFollowUpItem) => void;
+  canManage: boolean;
+}) {
+  const name = isRTL
+    ? item.statusNameAr || item.statusNameEn
+    : item.statusNameEn || item.statusNameAr;
+
+  const dependencyOk = item.canComplete === true;
+  const formFilled = hasFilledInputDescription(item.inputDescription);
+  const isSettled = item.result != null && item.result !== 1;
+  const inputStatusLabel = getInputDescriptionStatusLabel(item);
+
+  return (
+    <Card className={styles.mainDetailCard}>
+      <div className={styles.mainDetailHeader}>
+        <div className={styles.mainDetailHeaderLeft}>
+          <span className={styles.mainDetailIndex}>{idx + 1}</span>
+          <h2 className={styles.mainDetailTitle}>{name || '—'}</h2>
+        </div>
+        {inputStatusLabel ? <Tag color="blue">{inputStatusLabel}</Tag> : resultTag(item.result, t)}
+      </div>
+
+      {!dependencyOk && !isSettled && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('cannotCompleteMsg')}
+          className={styles.dependsAlert}
+          banner
+        />
+      )}
+
+      <div className={styles.itemMeta}>
+        {item.dependsOnStatusName && (
+          <span className={styles.metaItem}>
+            <span className={styles.metaLabel}>{t('dependsOn')}:</span>{' '}
+            {item.dependsOnStatusName}
+          </span>
+        )}
+        {item.maxDays != null && (
+          <span className={styles.metaItem}>
+            <span className={styles.metaLabel}>{t('maxDays')}:</span> {item.maxDays}
+          </span>
+        )}
+        {item.completedAt && (
+          <span className={styles.metaItem}>
+            <span className={styles.metaLabel}>{t('completedAt')}:</span>{' '}
+            {new Date(item.completedAt).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      <Divider style={{ margin: '12px 0' }} />
+
+      <div className={styles.mainDetailBody}>
+        <div className={styles.fieldLabel}>{t('inputDescription')}</div>
+        <ItemDetailContent item={item} isRTL={isRTL} t={t} />
+      </div>
+
+      {canManage && (
+        <div className={styles.mainDetailActions}>
+          <Tooltip title={t('fillForm')}>
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => onFillForm(item)}
+              type={formFilled ? 'default' : 'primary'}
+            >
+              {t('fillForm')}
+            </Button>
+          </Tooltip>
+        </div>
+      )}
+    </Card>
   );
 }
