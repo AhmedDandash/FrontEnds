@@ -16,6 +16,8 @@ import {
   Empty,
   Spin,
   Avatar,
+  Modal,
+  Form,
 } from 'antd';
 import {
   SearchOutlined,
@@ -33,19 +35,29 @@ import {
   SafetyCertificateOutlined,
   SolutionOutlined,
   ClockCircleOutlined,
+  UserDeleteOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/authStore';
 import { AdvancedFilterPanel, DateRangeFilter } from '@/components/filters';
+import { useContractActionGates } from '@/hooks/useActionPermissionGates';
 import { useAgents } from '@/hooks/api/useAgents';
 import { useMediationFollowUpDashboard } from '@/hooks/api/useMediationFollowUp';
+import { useMediationContracts } from '@/hooks/api/useMediationContracts';
 import { useNationalities } from '@/hooks/api/useNationalities';
 import { useJobs } from '@/hooks/api/useJobs';
 import { useUsers } from '@/hooks/api/useUsers';
-import { MEDIATION_CONTRACT_STATUS, MEDIATION_CONTRACT_TYPE, toSelectOptions } from '@/constants/enums';
+import {
+  MEDIATION_CONTRACT_STATUS,
+  MEDIATION_CONTRACT_TYPE,
+  CANCEL_BY,
+  toSelectOptions,
+} from '@/constants/enums';
 import { linkProps } from '@/lib/navigation/linkProps';
 import type {
   MediationFollowUpDashboardParams,
   MediationFollowUpDashboardCard,
+  ContractCancelDto,
 } from '@/types/api.types';
 import { formatCurrency, formatDate } from '../_lib/format';
 import styles from './AutomaticFollowUp.module.css';
@@ -108,6 +120,20 @@ function useT(language: string) {
       totalPaid: { ar: 'المدفوع', en: 'Paid' },
       remainingAmount: { ar: 'المتبقي', en: 'Remaining' },
       paymentStatus: { ar: 'حالة السداد', en: 'Payment Status' },
+      save: { ar: 'حفظ', en: 'Save' },
+      cancel: { ar: 'إلغاء', en: 'Cancel' },
+      submit: { ar: 'إرسال', en: 'Submit' },
+      required: { ar: 'مطلوب', en: 'Required' },
+      endWorkerService: { ar: 'إنهاء خدمة العامل', en: 'End Worker Service' },
+      endServiceReason: { ar: 'سبب الإنهاء (اختياري)', en: 'End Reason (optional)' },
+      endServiceReasonPlaceholder: {
+        ar: 'سبب إنهاء الخدمة...',
+        en: 'Reason for ending service...',
+      },
+      cancelContract: { ar: 'إلغاء العقد (باك أوت)', en: 'Cancel Contract (Backout)' },
+      cancelBy: { ar: 'إلغاء بواسطة', en: 'Cancel By' },
+      cancelNote: { ar: 'سبب الإلغاء', en: 'Cancel Reason' },
+      cancelNotePlaceholder: { ar: 'سبب الإلغاء...', en: 'Cancellation reason...' },
     };
     return (key: string) => map[key]?.[language] ?? map[key]?.['en'] ?? key;
   }, [language]);
@@ -356,6 +382,61 @@ export default function AutomaticFollowUpPage() {
   const { data: nationalities = [] } = useNationalities();
   const { data: jobs = [] } = useJobs();
   const { users = [] } = useUsers();
+
+  // ── Contract lifecycle actions (End Worker Service / Cancel) ──────────────
+  // Same gates + endpoints as the detail page and the regular contract pages.
+  const contractGates = useContractActionGates();
+  const { endWorkerService, cancelContract, isEndingWorkerService, isCancelling } =
+    useMediationContracts({ enabled: false });
+  const [endServiceRow, setEndServiceRow] = useState<MediationFollowUpDashboardCard | null>(null);
+  const [cancelRow, setCancelRow] = useState<MediationFollowUpDashboardCard | null>(null);
+  const [endServiceForm] = Form.useForm();
+  const [cancelForm] = Form.useForm();
+
+  const isTerminalContract = (row: MediationFollowUpDashboardCard) =>
+    row.statusId === 16 || row.statusId === 17;
+  const rowHasAssignedWorker = (row: MediationFollowUpDashboardCard) =>
+    !!(row.highlights?.workerPassportNumber || row.worker?.passportNumber || row.worker?.photoUrl);
+  const canEndWorkerService = useCallback(
+    (row: MediationFollowUpDashboardCard) =>
+      !isTerminalContract(row) && contractGates.canUpdate && rowHasAssignedWorker(row),
+    [contractGates.canUpdate]
+  );
+  const canCancelContract = useCallback(
+    (row: MediationFollowUpDashboardCard) => !isTerminalContract(row) && contractGates.canCancel,
+    [contractGates.canCancel]
+  );
+
+  const handleEndWorkerService = async () => {
+    if (!endServiceRow?.id) return;
+    try {
+      const values = await endServiceForm.validateFields();
+      await endWorkerService({ contractId: endServiceRow.id, reason: values.reason || null });
+      setEndServiceRow(null);
+      endServiceForm.resetFields();
+      refetch();
+    } catch {
+      // validation + API errors surfaced by the mutation/hook
+    }
+  };
+
+  const handleCancelContract = async () => {
+    if (!cancelRow?.id) return;
+    try {
+      const values = await cancelForm.validateFields();
+      const cancelData: ContractCancelDto = {
+        contractId: cancelRow.id,
+        cancelBy: values.cancelBy,
+        cancelNote: values.cancelNote,
+      };
+      await cancelContract(cancelData);
+      setCancelRow(null);
+      cancelForm.resetFields();
+      refetch();
+    } catch {
+      // validation + API errors surfaced by the mutation/hook
+    }
+  };
 
   const activeFilterCount = [
     contractNumber != null,
@@ -684,12 +765,44 @@ export default function AutomaticFollowUpPage() {
                   {t('viewDetails')}
                 </Button>
               </Tooltip>
+              {canEndWorkerService(row) && (
+                <Tooltip title={t('endWorkerService')}>
+                  <Button
+                    type="link"
+                    danger
+                    icon={<UserDeleteOutlined />}
+                    className={styles.actionBtn}
+                    onClick={() => {
+                      endServiceForm.resetFields();
+                      setEndServiceRow(row);
+                    }}
+                  >
+                    {t('endWorkerService')}
+                  </Button>
+                </Tooltip>
+              )}
+              {canCancelContract(row) && (
+                <Tooltip title={t('cancelContract')}>
+                  <Button
+                    type="link"
+                    danger
+                    icon={<CloseCircleOutlined />}
+                    className={styles.actionBtn}
+                    onClick={() => {
+                      cancelForm.resetFields();
+                      setCancelRow(row);
+                    }}
+                  >
+                    {t('cancelContract')}
+                  </Button>
+                </Tooltip>
+              )}
             </div>
           </div>
         </Card>
       );
     },
-    [t, language, router]
+    [t, language, router, endServiceForm, cancelForm, canEndWorkerService, canCancelContract]
   );
 
   return (
@@ -1029,6 +1142,74 @@ export default function AutomaticFollowUpPage() {
           />
         </div>
       )}
+
+      {/* ========== END WORKER SERVICE MODAL ========== */}
+      <Modal
+        title={
+          <span>
+            <UserDeleteOutlined style={{ marginInlineEnd: 8 }} />
+            {t('endWorkerService')}
+            {endServiceRow?.contractNumber != null && ` — #${endServiceRow.contractNumber}`}
+          </span>
+        }
+        open={!!endServiceRow}
+        onCancel={() => {
+          setEndServiceRow(null);
+          endServiceForm.resetFields();
+        }}
+        onOk={handleEndWorkerService}
+        okText={t('save')}
+        cancelText={t('cancel')}
+        confirmLoading={isEndingWorkerService}
+        okButtonProps={{ danger: true }}
+      >
+        <Form form={endServiceForm} layout="vertical">
+          <Form.Item name="reason" label={t('endServiceReason')}>
+            <Input.TextArea rows={3} placeholder={t('endServiceReasonPlaceholder')} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ========== CANCEL CONTRACT MODAL ========== */}
+      <Modal
+        title={
+          <span>
+            <CloseCircleOutlined style={{ marginInlineEnd: 8 }} />
+            {t('cancelContract')}
+            {cancelRow?.contractNumber != null && ` — #${cancelRow.contractNumber}`}
+          </span>
+        }
+        open={!!cancelRow}
+        onCancel={() => {
+          setCancelRow(null);
+          cancelForm.resetFields();
+        }}
+        onOk={handleCancelContract}
+        okText={t('submit')}
+        cancelText={t('cancel')}
+        confirmLoading={isCancelling}
+        okButtonProps={{ danger: true }}
+      >
+        <Form form={cancelForm} layout="vertical">
+          <Form.Item
+            name="cancelBy"
+            label={t('cancelBy')}
+            rules={[{ required: true, message: t('required') }]}
+          >
+            <Select
+              placeholder={t('cancelBy')}
+              options={toSelectOptions([...CANCEL_BY], isRTL ? 'ar' : 'en')}
+            />
+          </Form.Item>
+          <Form.Item
+            name="cancelNote"
+            label={t('cancelNote')}
+            rules={[{ required: true, message: t('required') }]}
+          >
+            <Input.TextArea rows={3} placeholder={t('cancelNotePlaceholder')} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
