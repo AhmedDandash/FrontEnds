@@ -39,7 +39,7 @@ import { MEDIATION_CONTRACT_STATUS, MEDIATION_CONTRACT_TYPE, toSelectOptions } f
 import { linkProps } from '@/lib/navigation/linkProps';
 import type {
   MediationFollowUpDashboardParams,
-  MediationFollowUpDashboardRow,
+  MediationFollowUpDashboardCard,
 } from '@/types/api.types';
 import styles from './AutomaticFollowUp.module.css';
 
@@ -77,6 +77,8 @@ function useT(language: string) {
       dateRange: { ar: 'نطاق التاريخ', en: 'Date Range' },
       progress: { ar: 'التقدم', en: 'Progress' },
       createdAt: { ar: 'تاريخ الإنشاء', en: 'Created' },
+      lastUpdated: { ar: 'آخر تحديث', en: 'Last Updated' },
+      agent: { ar: 'الوكيل', en: 'Agent' },
       visaDateLabel: { ar: 'تاريخ التأشيرة', en: 'Visa Date' },
     };
     return (key: string) => map[key]?.[language] ?? map[key]?.['en'] ?? key;
@@ -368,20 +370,18 @@ export default function AutomaticFollowUpPage() {
   }, []);
 
   const renderCard = useCallback(
-    (row: MediationFollowUpDashboardRow) => {
-      const id = row.contractId ?? row.id;
-      const createdDate = row.createdAt
-        ? new Date(row.createdAt).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB')
+    (row: MediationFollowUpDashboardCard) => {
+      const id = row.id;
+      const statusName = language === 'ar' ? row.statusNameAr : row.statusNameEn ?? row.statusNameAr;
+      const lastUpdated = row.lastUpdatedAt
+        ? new Date(row.lastUpdatedAt).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB')
         : '—';
-
-      const nationality = row.workerNationalityAr;
+      const nationality =
+        language === 'ar' ? row.highlights?.workerNationalityAr : row.highlights?.workerNationalityEn;
+      const agentName = row.header?.agentName || row.highlights?.agentName;
 
       return (
-        <Card
-          key={row.contractId ?? row.id ?? Math.random().toString()}
-          className={styles.followUpCard}
-          hoverable
-        >
+        <Card key={row.id ?? Math.random().toString()} className={styles.followUpCard} hoverable>
           <div className={styles.cardContent}>
             {/* ── Left Panel ── */}
             <div className={styles.cardLeft}>
@@ -398,35 +398,38 @@ export default function AutomaticFollowUpPage() {
               </div>
 
               <div className={styles.tagsSection}>
-                {row.statusName && (
-                  <Tag color="blue" className={styles.typeTag}>{row.statusName}</Tag>
+                {statusName && (
+                  <Tag color="blue" className={styles.typeTag}>{statusName}</Tag>
                 )}
-                {row.workerTypeName && (
-                  <Tag color="geekblue">{row.workerTypeName}</Tag>
+                {row.header?.contractCategoryName && (
+                  <Tag color="geekblue">{row.header.contractCategoryName}</Tag>
                 )}
               </div>
 
-              {/* Worker row */}
+              {/* Customer row — always shown per the highlights contract, even
+                  before a worker is assigned or any stage is completed. */}
               <div className={styles.customerSection}>
                 <Avatar size={44} icon={<UserOutlined />} className={styles.customerAvatar} />
                 <div className={styles.customerDetails}>
-                  <span className={styles.customerName}>{row.workerName || '—'}</span>
+                  <span className={styles.customerName}>{row.header?.customerName || '—'}</span>
                   <div className={styles.customerMeta}>
                     <IdcardOutlined />
-                    <span dir="ltr">{row.workerPassportNumber || '—'}</span>
+                    <span dir="ltr">{row.highlights?.workerPassportNumber || '—'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Extra details */}
               <div className={styles.detailsSection}>
-                <div className={styles.detailItem}>
-                  <UserOutlined className={styles.detailIcon} />
-                  <div className={styles.detailText}>
-                    <span className={styles.detailLabel}>{t('customerName')}</span>
-                    <span className={styles.detailValue}>{row.customerName || '—'}</span>
+                {agentName && (
+                  <div className={styles.detailItem}>
+                    <UserOutlined className={styles.detailIcon} />
+                    <div className={styles.detailText}>
+                      <span className={styles.detailLabel}>{t('agent')}</span>
+                      <span className={styles.detailValue}>{agentName}</span>
+                    </div>
                   </div>
-                </div>
+                )}
                 {nationality && (
                   <div className={styles.detailItem}>
                     <GlobalOutlined className={styles.detailIcon} />
@@ -448,7 +451,7 @@ export default function AutomaticFollowUpPage() {
                   <span className={styles.progressBannerLabel}>{t('status')}</span>
                 </div>
                 <div className={styles.progressBannerValue}>
-                  {row.statusName || '—'}
+                  {statusName || '—'}
                 </div>
                 {row.daysSinceCreation != null && (
                   <div className={styles.progressBannerSub}>
@@ -482,7 +485,7 @@ export default function AutomaticFollowUpPage() {
               <div className={styles.datesSection}>
                 <div className={styles.dateItem}>
                   <CalendarOutlined />
-                  <span>{createdDate}</span>
+                  <span>{t('lastUpdated')}: {lastUpdated}</span>
                 </div>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { MediationFollowUpService } from '@/services/mediation-followup.service'
 import { getApiErrorMessage } from '@/utils/api-error';
 import type {
   MediationFollowUpDashboardParams,
+  MediationFollowUpDashboardCard,
   MediationFollowUpItem,
   UpdateFollowUpItemDescriptionDto,
   CompleteFollowUpItemDto,
@@ -12,17 +13,28 @@ import type {
 
 const KEYS = {
   dashboard: 'mediation-followup-dashboard',
+  dashboardCard: 'mediation-followup-dashboard-card',
   items: 'mediation-followup-items',
   item: 'mediation-followup-item',
 } as const;
 
-// ── Dashboard ────────────────────────────────────────────────────────────────
+// ── Dashboard (list) ─────────────────────────────────────────────────────────
 
 export function useMediationFollowUpDashboard(params?: MediationFollowUpDashboardParams) {
   return useQuery({
     queryKey: [KEYS.dashboard, params],
     queryFn: () => MediationFollowUpService.getDashboard(params),
     placeholderData: (previous) => previous,
+  });
+}
+
+// ── Single card (detail screen) — identity + timeline + stages in one call ───
+
+export function useMediationFollowUpDashboardCard(contractId?: string | null) {
+  return useQuery<MediationFollowUpDashboardCard>({
+    queryKey: [KEYS.dashboardCard, contractId],
+    queryFn: () => MediationFollowUpService.getDashboardCard(contractId!),
+    enabled: !!contractId,
   });
 }
 
@@ -56,6 +68,7 @@ export function useUpdateFollowUpDescription(contractId?: string | null) {
       MediationFollowUpService.updateDescription(dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KEYS.items, contractId] });
+      queryClient.invalidateQueries({ queryKey: [KEYS.dashboardCard, contractId] });
       queryClient.invalidateQueries({ queryKey: [KEYS.dashboard] });
       message.success('تم تحديث المرحلة بنجاح / Stage updated successfully');
     },
@@ -85,6 +98,7 @@ export function useCompleteFollowUpItem(contractId?: string | null) {
       MediationFollowUpService.completeItem(dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [KEYS.items, contractId] });
+      queryClient.invalidateQueries({ queryKey: [KEYS.dashboardCard, contractId] });
       queryClient.invalidateQueries({ queryKey: [KEYS.dashboard] });
       message.success('تم إتمام المرحلة بنجاح / Stage completed successfully');
     },

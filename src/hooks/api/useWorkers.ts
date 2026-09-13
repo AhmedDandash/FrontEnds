@@ -222,6 +222,27 @@ export function useAvailableMediationWorkers(passportNo?: string, enabled = true
   });
 }
 
+/**
+ * Fetch every worker currently available for contract assignment (active +
+ * not busy on a mediation/operating/transfer contract — see WORKER_EXPLAIN.md
+ * §3). Unlike `useAvailableMediationWorkers`, this does not scope the query to
+ * a passport search — it's for "browse the available pool" screens rather
+ * than an assign-worker picker. Do not reintroduce a client-side
+ * `workerStatus === 1` filter alongside this; that is a different, incorrect
+ * definition of "available" (see WORKER_EXPLAIN.md §2/§5).
+ */
+export function useAvailableWorkers() {
+  return useQuery<Worker[]>({
+    queryKey: [...WORKERS_KEY, 'available'],
+    queryFn: async () => {
+      const response = await api.get(API_ENDPOINTS.WORKERS.GET_ALL, {
+        params: { availableForMediationContract: true, PageSize: 9999 },
+      });
+      return extractWorkerArray(response.data);
+    },
+  });
+}
+
 /** Fetch a single worker by ID */
 export function useWorker(id: string | undefined) {
   const normalizedId = id && id !== 'undefined' ? id : undefined;

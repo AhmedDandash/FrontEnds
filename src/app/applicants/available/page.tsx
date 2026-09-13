@@ -38,7 +38,7 @@ import {
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/authStore';
 import { actionLinkProps } from '@/lib/navigation/linkProps';
-import { useWorker, useWorkers } from '@/hooks/api/useWorkers';
+import { useWorker, useAvailableWorkers } from '@/hooks/api/useWorkers';
 import { useNationalities } from '@/hooks/api/useNationalities';
 import {
   GENDER,
@@ -224,7 +224,11 @@ export default function AvailableWorkersPage() {
     return translations[language][key] || key;
   };
 
-  const { data: workers = [], isLoading } = useWorkers();
+  // Server-side "available" (active + not busy on any mediation/operating/
+  // transfer contract) — see WORKER_EXPLAIN.md §3. Do not re-add a
+  // client-side workerStatus filter on top of this; §2 explicitly warns
+  // WorkerStatus === 1 ("under processing") is not "available for pick".
+  const { data: workers = [], isLoading } = useAvailableWorkers();
   const { data: viewingWorker, isLoading: isViewingLoading } = useWorker(viewingWorkerId ?? undefined);
   // Nationality dropdown is sourced from the API (active only) instead of a
   // hardcoded enum, so disabled nationalities never appear.
@@ -264,9 +268,6 @@ export default function AvailableWorkersPage() {
         (worker.nationalityName || '').toLowerCase() === String(filters.nationality).toLowerCase();
       const matchesGender = !filters.gender || worker.gender === Number(filters.gender);
 
-      // Only show Available workers (workerStatus === 1)
-      const matchesAvailable = worker.workerStatus === 1;
-
       const matchesAgeMin =
         filters.ageMin === undefined || (worker.age != null && worker.age >= filters.ageMin);
       const matchesAgeMax =
@@ -283,7 +284,6 @@ export default function AvailableWorkersPage() {
         (activeTab === 'sponsorship' && worker.workerType === WORKER_CONTRACT_TYPE[2].value);
 
       return (
-        matchesAvailable &&
         matchesSearch &&
         matchesNationality &&
         matchesGender &&

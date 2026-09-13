@@ -1964,44 +1964,98 @@ export interface MediationFollowUpDashboardParams {
 }
 
 /**
- * Single row returned by GET /dashboard.
- * Response shape not defined in spec — fields mirror MediationContract + follow-up status.
+ * Data always shown on the card, filled automatically from system tables —
+ * not follow-up fields an employee enters (Frontend_AutomaticFollowUp_README.md
+ * §1/§3.2). Render even while `followUpStages` are still Pending.
  */
-export interface MediationFollowUpDashboardRow {
-  id?: string | null;
-  contractId?: string | null;
-  contractNumber?: number | null;
-  workerName?: string | null;
-  workerPassportNumber?: string | null;
+export interface FollowUpHighlights {
+  customerBirthDate?: string | null;
+  customerBirthDateHijri?: string | null;
+  customerNationality?: string | null;
   workerNationalityAr?: string | null;
-  workerTypeName?: string | null;
-  customerName?: string | null;
+  workerNationalityEn?: string | null;
   customerNationalId?: string | null;
+  workerPassportNumber?: string | null;
+  agentName?: string | null;
+}
+
+/** Right-column identity block (§3.3). */
+export interface FollowUpDashboardHeader {
+  customerName?: string | null;
   customerPhone?: string | null;
-  musanedContractNumber?: string | null;
-  statusId?: number | null;
-  statusName?: string | null;
-  contractTypeName?: string | null;
+  customerEmail?: string | null;
   visaNumber?: string | null;
-  visaDate?: string | null;
-  totalCost?: number | null;
-  salary?: number | null;
+  agentName?: string | null;
+  workerStatusNameAr?: string | null;
+  workerStatusNameEn?: string | null;
+  customerCity?: string | null;
+  contractCategoryName?: string | null;
+}
+
+/** Offer/cost figures for the middle column (§3.4). */
+export interface FollowUpDashboardOffer {
   offerAmount?: number | null;
-  daysSinceCreation?: number | null;
-  createdAt?: string | null;
-  workerType?: number | null;
+  otherCosts?: number | null;
+  salary?: number | null;
+  totalTaxValue?: number | null;
+  totalCost?: number | null;
+  totalPaid?: number | null;
+  remainingAmount?: number | null;
+  paymentStatus?: string | null;
+}
+
+/** Subset of worker fields the detail screen shows (§3.5). */
+export interface FollowUpDashboardWorkerInfo {
+  passportNumber?: string | null;
+  nationalityAr?: string | null;
+  age?: number | null;
+  religionNameAr?: string | null;
+  photoUrl?: string | null;
+  /** Passport pending / worker not yet registered in the system. */
+  isExternal?: boolean | null;
+}
+
+/** One entry in the contract's status history, oldest first (§3.6). */
+export interface FollowUpTimelineEvent {
+  id?: string | null;
+  date?: string | null;
+  statusId: number;
+  statusNameAr: string;
+  statusNameEn: string;
+  notes?: string | null;
+  createdByName?: string | null;
+  isCurrent: boolean;
 }
 
 /**
- * Paginated wrapper that the dashboard endpoint may return.
- * Handled generically in the service's unwrapList — typed here for clarity.
+ * Card returned by both `GET /dashboard` (list, one per item) and
+ * `GET /dashboard/{contractId}` (single card / detail screen) — supersedes
+ * the old flat row shape. Breaking change: old root-level fields like
+ * `customerName`/`workerPassportNumber` no longer exist — read them from
+ * `header`/`highlights` instead (Frontend_AutomaticFollowUp_README.md).
  */
-export interface MediationFollowUpDashboardResponse {
-  data?: MediationFollowUpDashboardRow[];
-  total?: number | null;
-  page?: number | null;
-  pageSize?: number | null;
-  totalPages?: number | null;
+export interface MediationFollowUpDashboardCard {
+  id: string;
+  contractNumber: number;
+  statusId?: number | null;
+  statusNameAr?: string | null;
+  statusNameEn?: string | null;
+  musanedContractNumber?: string | null;
+  daysSinceCreation?: number | null;
+  daysSinceLastUpdate?: number | null;
+  lastUpdatedAt?: string | null;
+  currentFollowUpItemId?: string | null;
+  currentFollowUpStatusNameAr?: string | null;
+  highlights: FollowUpHighlights;
+  header: FollowUpDashboardHeader;
+  offer: FollowUpDashboardOffer;
+  /** Full detail-screen objects — the list/card view only needs highlights+header. */
+  customer?: Record<string, any> | null;
+  worker?: FollowUpDashboardWorkerInfo | null;
+  agent?: Record<string, any> | null;
+  visa?: Record<string, any> | null;
+  timeline: FollowUpTimelineEvent[];
+  followUpStages: MediationFollowUpItem[];
 }
 
 /**

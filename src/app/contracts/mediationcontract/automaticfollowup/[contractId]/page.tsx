@@ -13,6 +13,7 @@ import {
   Card,
   Select,
   Divider,
+  Timeline,
   message,
 } from 'antd';
 import {
@@ -29,17 +30,15 @@ import {
   CalendarOutlined,
   FileTextOutlined,
   SolutionOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/authStore';
 import { APP_PERMISSIONS } from '@/config/appPermissions';
 import { useHasPermission } from '@/hooks/api/usePagePermissions';
 import {
-  useMediationFollowUpItems,
+  useMediationFollowUpDashboardCard,
   useUpdateFollowUpDescription,
 } from '@/hooks/api/useMediationFollowUp';
-import { useMediationContract } from '@/hooks/api/useMediationContracts';
-import { useCustomerById } from '@/hooks/api/useCustomers';
-import { useNationality } from '@/hooks/api/useNationalities';
 import { InputDescriptionModal } from '@/components/followup/InputDescriptionModal';
 import {
   hasFilledInputDescription,
@@ -48,7 +47,11 @@ import {
   ITEM_STATUS_OPTIONS,
 } from '@/types/follow-up-forms.types';
 import { AUTHORIZATION_SYSTEM } from '@/constants/enums';
-import type { MediationFollowUpItem } from '@/types/api.types';
+import type {
+  MediationFollowUpItem,
+  MediationFollowUpDashboardCard as FollowUpCard,
+  FollowUpTimelineEvent,
+} from '@/types/api.types';
 import { formatDate } from '../../_lib/format';
 import styles from './ContractFollowUpDetail.module.css';
 
@@ -87,14 +90,16 @@ function useT(language: string) {
       },
       summaryCustomerName: { ar: 'اسم العميل', en: 'Customer Name' },
       summaryDob: { ar: 'تاريخ الميلاد', en: 'Date of Birth' },
+      summaryDobHijri: { ar: 'تاريخ الميلاد (هجري)', en: 'Date of Birth (Hijri)' },
       summaryClientNationality: { ar: 'جنسية العميل', en: 'Client Nationality' },
       summaryClientNationalId: { ar: 'رقم هوية العميل', en: 'Client National ID' },
-      summaryWorkerName: { ar: 'اسم العامل', en: 'Worker Name' },
       summaryWorkerNationality: { ar: 'جنسية العامل', en: 'Worker Nationality' },
       summaryWorkerPassport: { ar: 'رقم جواز العامل', en: 'Worker Passport No.' },
       summaryAgentName: { ar: 'اسم الوكيل', en: 'Agent Name' },
       summaryContractNumber: { ar: 'رقم العقد', en: 'Contract No.' },
       summaryMusanedNumber: { ar: 'رقم مساند', en: 'Musaned No.' },
+      timelineTitle: { ar: 'الجدول الزمني للعقد', en: 'Contract Timeline' },
+      noTimeline: { ar: 'لا يوجد سجل حالات لهذا العقد', en: 'No status history for this contract' },
     };
     return (key: string) => map[key]?.[language] ?? map[key]?.['en'] ?? key;
   }, [language]);
@@ -140,10 +145,12 @@ export default function ContractFollowUpDetailPage() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [resultFilter, setResultFilter] = useState<'all' | '1' | '2' | '3' | '4'>('all');
 
-  const { data: items = [], isLoading, refetch } = useMediationFollowUpItems(contractId);
-  const { data: contract, isLoading: contractLoading } = useMediationContract(contractId);
-  const { data: customer, isLoading: customerLoading } = useCustomerById(contract?.customerId);
-  const { data: customerNationality } = useNationality(customer?.nationality ?? '');
+  // Single call for identity + timeline + stages — see
+  // Frontend_AutomaticFollowUp_README.md §4: the detail screen uses the same
+  // payload as GET /dashboard/{contractId}, no separate contract/customer/
+  // nationality lookups needed.
+  const { data: card, isLoading, refetch } = useMediationFollowUpDashboardCard(contractId);
+  const items = useMemo(() => card?.followUpStages ?? [], [card]);
 
   const updateDescMutation = useUpdateFollowUpDescription(contractId);
 
@@ -209,16 +216,10 @@ export default function ContractFollowUpDetailPage() {
       <PageHeader t={t} router={router} refetch={refetch} isLoading={isLoading} />
 
       {/* ── Summary bar — always visible, independent of stage data being filled ── */}
-      <SummaryHeader
-        t={t}
-        isRTL={isRTL}
-        contract={contract}
-        customer={customer}
-        customerNationalityLabel={
-          isRTL ? customerNationality?.nationalityNameAr : customerNationality?.nationalityNameEn
-        }
-        loading={contractLoading || customerLoading}
-      />
+      <SummaryHeader t={t} isRTL={isRTL} card={card} loading={isLoading && !card} />
+
+      {/* ── Contract status history (§3.6) ── */}
+      <ContractTimeline t={t} isRTL={isRTL} timeline={card?.timeline} loading={isLoading && !card} />
 
       {!isLoading && sortedItems.length === 0 ? (
         <div className={styles.centered}>
@@ -351,38 +352,95 @@ function SummaryItem({
 function SummaryHeader({
   t,
   isRTL,
-  contract,
-  customer,
-  customerNationalityLabel,
+  card,
   loading,
 }: {
   t: (k: string) => string;
   isRTL: boolean;
-  contract: { customerName?: string | null; customerNationalId?: string | null; workerName?: string | null; workerNationalityAr?: string | null; workerPassportNumber?: string | null; agentName?: string | null; contractNumber?: number | null; musanedContractNumber?: string | null } | undefined;
-  customer: { dateOfBirth?: string | null; birthDate?: string | null } | undefined;
-  customerNationalityLabel?: string | null;
+  card: FollowUpCard | undefined;
   loading: boolean;
 }) {
-  const dob = formatDate(customer?.dateOfBirth || customer?.birthDate, isRTL ? 'ar' : 'en');
+  const highlights = card?.highlights;
+  const header = card?.header;
+  const dob = formatDate(highlights?.customerBirthDate, isRTL ? 'ar' : 'en');
+  const nationality = highlights?.customerNationality;
+  const workerNationality = isRTL ? highlights?.workerNationalityAr : highlights?.workerNationalityEn;
+  const agentName = header?.agentName || highlights?.agentName;
 
   return (
-    <Card className={styles.summaryCard} size="small" loading={loading && !contract}>
+    <Card className={styles.summaryCard} size="small" loading={loading}>
       <div className={styles.summaryGrid}>
-        {contract?.contractNumber != null && (
-          <SummaryItem icon={<FileTextOutlined />} label={t('summaryContractNumber')} value={`#${contract.contractNumber}`} />
+        {card?.contractNumber != null && (
+          <SummaryItem icon={<FileTextOutlined />} label={t('summaryContractNumber')} value={`#${card.contractNumber}`} />
         )}
-        {contract?.musanedContractNumber && (
-          <SummaryItem icon={<FileTextOutlined />} label={t('summaryMusanedNumber')} value={contract.musanedContractNumber} />
+        {card?.musanedContractNumber && (
+          <SummaryItem icon={<FileTextOutlined />} label={t('summaryMusanedNumber')} value={card.musanedContractNumber} />
         )}
-        <SummaryItem icon={<UserOutlined />} label={t('summaryCustomerName')} value={contract?.customerName} />
+        <SummaryItem icon={<UserOutlined />} label={t('summaryCustomerName')} value={header?.customerName} />
         <SummaryItem icon={<CalendarOutlined />} label={t('summaryDob')} value={dob} />
-        <SummaryItem icon={<GlobalOutlined />} label={t('summaryClientNationality')} value={customerNationalityLabel} />
-        <SummaryItem icon={<IdcardOutlined />} label={t('summaryClientNationalId')} value={contract?.customerNationalId} />
-        <SummaryItem icon={<UserOutlined />} label={t('summaryWorkerName')} value={contract?.workerName} />
-        <SummaryItem icon={<GlobalOutlined />} label={t('summaryWorkerNationality')} value={contract?.workerNationalityAr} />
-        <SummaryItem icon={<IdcardOutlined />} label={t('summaryWorkerPassport')} value={contract?.workerPassportNumber} />
-        <SummaryItem icon={<SolutionOutlined />} label={t('summaryAgentName')} value={contract?.agentName} />
+        {highlights?.customerBirthDateHijri && (
+          <SummaryItem icon={<CalendarOutlined />} label={t('summaryDobHijri')} value={highlights.customerBirthDateHijri} />
+        )}
+        <SummaryItem icon={<GlobalOutlined />} label={t('summaryClientNationality')} value={nationality} />
+        <SummaryItem icon={<IdcardOutlined />} label={t('summaryClientNationalId')} value={highlights?.customerNationalId} />
+        <SummaryItem icon={<GlobalOutlined />} label={t('summaryWorkerNationality')} value={workerNationality} />
+        <SummaryItem icon={<IdcardOutlined />} label={t('summaryWorkerPassport')} value={highlights?.workerPassportNumber} />
+        <SummaryItem icon={<SolutionOutlined />} label={t('summaryAgentName')} value={agentName} />
       </div>
+    </Card>
+  );
+}
+
+// ── Contract status history — Frontend_AutomaticFollowUp_README.md §3.6 ───────
+
+function ContractTimeline({
+  t,
+  isRTL,
+  timeline,
+  loading,
+}: {
+  t: (k: string) => string;
+  isRTL: boolean;
+  timeline: FollowUpTimelineEvent[] | undefined;
+  loading: boolean;
+}) {
+  if (!loading && (!timeline || timeline.length === 0)) return null;
+
+  return (
+    <Card
+      className={styles.summaryCard}
+      size="small"
+      loading={loading}
+      title={
+        <span>
+          <HistoryOutlined style={{ marginInlineEnd: 8 }} />
+          {t('timelineTitle')}
+        </span>
+      }
+    >
+      {timeline && timeline.length > 0 ? (
+        <Timeline
+          items={timeline.map((event) => ({
+            color: event.isCurrent ? 'blue' : 'gray',
+            children: (
+              <div>
+                <div style={{ fontWeight: event.isCurrent ? 700 : 400 }}>
+                  {(isRTL ? event.statusNameAr : event.statusNameEn) || '—'}
+                </div>
+                <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                  {formatDate(event.date, isRTL ? 'ar' : 'en')}
+                  {event.createdByName ? ` · ${event.createdByName}` : ''}
+                </div>
+                {event.notes && (
+                  <div style={{ fontSize: 12, color: '#595959' }}>{event.notes}</div>
+                )}
+              </div>
+            ),
+          }))}
+        />
+      ) : (
+        <Empty description={t('noTimeline')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      )}
     </Card>
   );
 }

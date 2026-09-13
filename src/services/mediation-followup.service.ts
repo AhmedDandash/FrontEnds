@@ -2,7 +2,7 @@ import { api } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/config/api.config';
 import type {
   MediationFollowUpDashboardParams,
-  MediationFollowUpDashboardRow,
+  MediationFollowUpDashboardCard,
   MediationFollowUpItem,
   UpdateFollowUpItemDescriptionDto,
   CompleteFollowUpItemDto,
@@ -55,7 +55,7 @@ export class MediationFollowUpService {
 
   static async getDashboard(
     params?: MediationFollowUpDashboardParams
-  ): Promise<{ rows: MediationFollowUpDashboardRow[]; total: number }> {
+  ): Promise<{ rows: MediationFollowUpDashboardCard[]; total: number }> {
     const cleanParams: Record<string, any> = {};
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -67,7 +67,7 @@ export class MediationFollowUpService {
     });
 
     const payload = response.data;
-    const rows = this.unwrapList<MediationFollowUpDashboardRow>(payload);
+    const rows = this.unwrapList<MediationFollowUpDashboardCard>(payload);
 
     // Try to extract pagination total from various response shapes
     const total: number =
@@ -79,6 +79,13 @@ export class MediationFollowUpService {
       rows.length;
 
     return { rows, total };
+  }
+
+  // ── Single card / detail screen — one call for identity + timeline + stages ──
+
+  static async getDashboardCard(contractId: string): Promise<MediationFollowUpDashboardCard> {
+    const response = await api.get<any>(API_ENDPOINTS.MEDIATION_FOLLOWUP.DASHBOARD_CARD(contractId));
+    return this.unwrap<MediationFollowUpDashboardCard>(response.data);
   }
 
   // ── Items list for a contract ─────────────────────────────────────────────

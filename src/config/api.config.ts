@@ -382,6 +382,7 @@ export const API_ENDPOINTS = {
 
   MEDIATION_FOLLOWUP: {
     DASHBOARD: '/api/Mediation/MediationFollowUp/dashboard',
+    DASHBOARD_CARD: (contractId: string) => `/api/Mediation/MediationFollowUp/dashboard/${contractId}`,
     ITEMS: (contractId: string) => `/api/Mediation/MediationFollowUp/items/${contractId}`,
     ITEM: (itemId: string) => `/api/Mediation/MediationFollowUp/item/${itemId}`,
     UPDATE_DESCRIPTION: '/api/Mediation/MediationFollowUp/update-description',
