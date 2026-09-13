@@ -27,6 +27,14 @@
   gap: 12px;
 }
 
+/* Refresh + contract lifecycle actions (end worker service / cancel) */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .pageTitle {
   font-size: 20px;
   font-weight: 700;

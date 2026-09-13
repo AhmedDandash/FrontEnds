@@ -15,6 +15,9 @@ import {
   Select,
   Divider,
   Timeline,
+  Modal,
+  Form,
+  Input,
   message,
 } from 'antd';
 import {
@@ -26,6 +29,7 @@ import {
   EditOutlined,
   ReloadOutlined,
   UserOutlined,
+  UserDeleteOutlined,
   IdcardOutlined,
   GlobalOutlined,
   FileProtectOutlined,
@@ -44,10 +48,12 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { APP_PERMISSIONS } from '@/config/appPermissions';
 import { useHasPermission } from '@/hooks/api/usePagePermissions';
+import { useContractActionGates } from '@/hooks/useActionPermissionGates';
 import {
   useMediationFollowUpDashboardCard,
   useUpdateFollowUpDescription,
 } from '@/hooks/api/useMediationFollowUp';
+import { useMediationContracts } from '@/hooks/api/useMediationContracts';
 import { InputDescriptionModal } from '@/components/followup/InputDescriptionModal';
 import {
   hasFilledInputDescription,
@@ -55,8 +61,9 @@ import {
   getStatusFieldName,
   ITEM_STATUS_OPTIONS,
 } from '@/types/follow-up-forms.types';
-import { AUTHORIZATION_SYSTEM } from '@/constants/enums';
+import { AUTHORIZATION_SYSTEM, CANCEL_BY, toSelectOptions } from '@/constants/enums';
 import type {
+  ContractCancelDto,
   MediationFollowUpItem,
   MediationFollowUpDashboardCard as FollowUpCard,
 } from '@/types/api.types';
@@ -135,6 +142,20 @@ function useT(language: string) {
       totalPaid: { ar: 'المدفوع', en: 'Paid' },
       remainingAmount: { ar: 'المتبقي', en: 'Remaining' },
       offerPaymentStatus: { ar: 'حالة السداد', en: 'Payment Status' },
+      save: { ar: 'حفظ', en: 'Save' },
+      cancel: { ar: 'إلغاء', en: 'Cancel' },
+      submit: { ar: 'إرسال', en: 'Submit' },
+      required: { ar: 'مطلوب', en: 'Required' },
+      endWorkerService: { ar: 'إنهاء خدمة العامل', en: 'End Worker Service' },
+      endServiceReason: { ar: 'سبب الإنهاء (اختياري)', en: 'End Reason (optional)' },
+      endServiceReasonPlaceholder: {
+        ar: 'سبب إنهاء الخدمة...',
+        en: 'Reason for ending service...',
+      },
+      cancelContract: { ar: 'إلغاء العقد (باك أوت)', en: 'Cancel Contract (Backout)' },
+      cancelBy: { ar: 'إلغاء بواسطة', en: 'Cancel By' },
+      cancelNote: { ar: 'سبب الإلغاء', en: 'Cancel Reason' },
+      cancelNotePlaceholder: { ar: 'سبب الإلغاء...', en: 'Cancellation reason...' },
     };
     return (key: string) => map[key]?.[language] ?? map[key]?.['en'] ?? key;
   }, [language]);
@@ -194,10 +215,18 @@ export default function ContractFollowUpDetailPage() {
   const t = useT(language);
   const { has } = useHasPermission();
   const canManageFollowUp = has(APP_PERMISSIONS.AUTOMATIC_FOLLOW_UP_MANAGE);
+  // Same gates the regular contract list/detail pages use for these two
+  // lifecycle actions — CONTRACTS_UPDATE ends a worker's service,
+  // CONTRACTS_DELETE cancels ("باك أوت") the contract.
+  const contractGates = useContractActionGates();
 
   const [inputFormItem, setInputFormItem] = useState<MediationFollowUpItem | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [resultFilter, setResultFilter] = useState<'all' | '1' | '2' | '3' | '4'>('all');
+  const [showEndServiceModal, setShowEndServiceModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [endServiceForm] = Form.useForm();
+  const [cancelForm] = Form.useForm();
 
   // Single call for identity + timeline + stages — see
   // Frontend_AutomaticFollowUp_README.md §4: the detail screen uses the same
@@ -207,6 +236,11 @@ export default function ContractFollowUpDetailPage() {
   const items = useMemo(() => card?.followUpStages ?? [], [card]);
 
   const updateDescMutation = useUpdateFollowUpDescription(contractId);
+
+  // Mutations only — `enabled: false` skips the contract list fetch this screen
+  // has no use for.
+  const { endWorkerService, cancelContract, isEndingWorkerService, isCancelling } =
+    useMediationContracts({ enabled: false });
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
@@ -235,7 +269,55 @@ export default function ContractFollowUpDetailPage() {
     [sortedItems, selectedItemId]
   );
 
+  // ── Contract lifecycle action gates ───────────────────────────────────────
+  // Mirrors the list page: both actions disappear once the contract is in a
+  // terminal state. Codes per Frontend_AutomaticFollowUp_README.md §6 —
+  // 16 = تم إرجاع العاملة ("returned"), 17 = ملغي ("cancelled").
+  const isTerminalContract = card?.statusId === 16 || card?.statusId === 17;
+  // The end-service endpoint 400s when nothing is assigned, so mirror
+  // MediationContractDetailView's "registered worker or pending passport" gate
+  // using the fields this card actually carries.
+  const hasAssignedWorker = !!(
+    card?.highlights?.workerPassportNumber ||
+    card?.worker?.passportNumber ||
+    card?.worker?.photoUrl
+  );
+  const canEndWorkerService =
+    !!card && !isTerminalContract && contractGates.canUpdate && hasAssignedWorker;
+  const canCancelContract = !!card && !isTerminalContract && contractGates.canCancel;
+
   // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleEndWorkerService = async () => {
+    if (!contractId || !canEndWorkerService) return;
+    try {
+      const values = await endServiceForm.validateFields();
+      await endWorkerService({ contractId, reason: values.reason || null });
+      setShowEndServiceModal(false);
+      endServiceForm.resetFields();
+      refetch();
+    } catch {
+      // validation + API errors surfaced by the mutation/hook
+    }
+  };
+
+  const handleCancelContract = async () => {
+    if (!contractId || !canCancelContract) return;
+    try {
+      const values = await cancelForm.validateFields();
+      const data: ContractCancelDto = {
+        contractId,
+        cancelBy: values.cancelBy,
+        cancelNote: values.cancelNote,
+      };
+      await cancelContract(data);
+      setShowCancelModal(false);
+      cancelForm.resetFields();
+      refetch();
+    } catch {
+      // validation + API errors surfaced by the mutation/hook
+    }
+  };
 
   const openInputForm = (item: MediationFollowUpItem) => {
     if (!canManageFollowUp) return;
@@ -267,7 +349,40 @@ export default function ContractFollowUpDetailPage() {
   return (
     <div className={styles.container} dir={isRTL ? 'rtl' : 'ltr'}>
       {/* ── Header ── */}
-      <PageHeader t={t} router={router} refetch={refetch} isLoading={isLoading} />
+      <PageHeader
+        t={t}
+        router={router}
+        refetch={refetch}
+        isLoading={isLoading}
+        actions={
+          <>
+            {canEndWorkerService && (
+              <Button
+                danger
+                icon={<UserDeleteOutlined />}
+                onClick={() => {
+                  endServiceForm.resetFields();
+                  setShowEndServiceModal(true);
+                }}
+              >
+                {t('endWorkerService')}
+              </Button>
+            )}
+            {canCancelContract && (
+              <Button
+                danger
+                icon={<CloseCircleOutlined />}
+                onClick={() => {
+                  cancelForm.resetFields();
+                  setShowCancelModal(true);
+                }}
+              >
+                {t('cancelContract')}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* ── Summary bar — always visible, independent of stage data being filled;
           highlights (DOB, nationalities, national ID, passport, agent) shown up
@@ -386,6 +501,74 @@ export default function ContractFollowUpDetailPage() {
         onSave={handleInputFormSave}
         loading={updateDescMutation.isPending}
       />
+
+      {/* ========== END WORKER SERVICE MODAL ========== */}
+      <Modal
+        title={
+          <span>
+            <UserDeleteOutlined style={{ marginInlineEnd: 8 }} />
+            {t('endWorkerService')}
+            {card?.contractNumber != null && ` — #${card.contractNumber}`}
+          </span>
+        }
+        open={showEndServiceModal && canEndWorkerService}
+        onCancel={() => {
+          setShowEndServiceModal(false);
+          endServiceForm.resetFields();
+        }}
+        onOk={canEndWorkerService ? handleEndWorkerService : undefined}
+        okText={t('save')}
+        cancelText={t('cancel')}
+        confirmLoading={isEndingWorkerService}
+        okButtonProps={{ danger: true }}
+      >
+        <Form form={endServiceForm} layout="vertical">
+          <Form.Item name="reason" label={t('endServiceReason')}>
+            <Input.TextArea rows={3} placeholder={t('endServiceReasonPlaceholder')} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ========== CANCEL CONTRACT MODAL ========== */}
+      <Modal
+        title={
+          <span>
+            <CloseCircleOutlined style={{ marginInlineEnd: 8 }} />
+            {t('cancelContract')}
+            {card?.contractNumber != null && ` — #${card.contractNumber}`}
+          </span>
+        }
+        open={showCancelModal && canCancelContract}
+        onCancel={() => {
+          setShowCancelModal(false);
+          cancelForm.resetFields();
+        }}
+        onOk={canCancelContract ? handleCancelContract : undefined}
+        okText={t('submit')}
+        cancelText={t('cancel')}
+        confirmLoading={isCancelling}
+        okButtonProps={{ danger: true }}
+      >
+        <Form form={cancelForm} layout="vertical">
+          <Form.Item
+            name="cancelBy"
+            label={t('cancelBy')}
+            rules={[{ required: true, message: t('required') }]}
+          >
+            <Select
+              placeholder={t('cancelBy')}
+              options={toSelectOptions([...CANCEL_BY], isRTL ? 'ar' : 'en')}
+            />
+          </Form.Item>
+          <Form.Item
+            name="cancelNote"
+            label={t('cancelNote')}
+            rules={[{ required: true, message: t('required') }]}
+          >
+            <Input.TextArea rows={3} placeholder={t('cancelNotePlaceholder')} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
@@ -397,11 +580,15 @@ function PageHeader({
   router,
   refetch,
   isLoading,
+  actions,
 }: {
   t: (k: string) => string;
   router: ReturnType<typeof useRouter>;
   refetch: () => void;
   isLoading: boolean;
+  /** Contract lifecycle actions — rendered alongside Refresh, so the summary
+      card and the stages/timeline split below stay untouched. */
+  actions?: ReactNode;
 }) {
   return (
     <div className={styles.pageHeader}>
@@ -415,9 +602,12 @@ function PageHeader({
         </Button>
         <h1 className={styles.pageTitle}>{t('pageTitle')}</h1>
       </div>
-      <Button icon={<ReloadOutlined />} onClick={refetch} loading={isLoading}>
-        {t('refresh')}
-      </Button>
+      <div className={styles.headerActions}>
+        {actions}
+        <Button icon={<ReloadOutlined />} onClick={refetch} loading={isLoading}>
+          {t('refresh')}
+        </Button>
+      </div>
     </div>
   );
 }
