@@ -50,7 +50,6 @@ import { AUTHORIZATION_SYSTEM } from '@/constants/enums';
 import type {
   MediationFollowUpItem,
   MediationFollowUpDashboardCard as FollowUpCard,
-  FollowUpTimelineEvent,
 } from '@/types/api.types';
 import { formatDate } from '../../_lib/format';
 import styles from './ContractFollowUpDetail.module.css';
@@ -215,11 +214,10 @@ export default function ContractFollowUpDetailPage() {
       {/* ── Header ── */}
       <PageHeader t={t} router={router} refetch={refetch} isLoading={isLoading} />
 
-      {/* ── Summary bar — always visible, independent of stage data being filled ── */}
+      {/* ── Summary bar — always visible, independent of stage data being filled;
+          highlights (DOB, nationalities, national ID, passport, agent) shown up
+          front, per the client's "مثل شاشة مساعد" request ── */}
       <SummaryHeader t={t} isRTL={isRTL} card={card} loading={isLoading && !card} />
-
-      {/* ── Contract status history (§3.6) ── */}
-      <ContractTimeline t={t} isRTL={isRTL} timeline={card?.timeline} loading={isLoading && !card} />
 
       {!isLoading && sortedItems.length === 0 ? (
         <div className={styles.centered}>
@@ -227,30 +225,29 @@ export default function ContractFollowUpDetailPage() {
         </div>
       ) : (
         <div className={styles.layout}>
-          {/* ── Side rail: stage list ── */}
-          <aside className={styles.sidebar}>
-            <div className={styles.sidebarHeader}>
+          {/* ── Middle: stages (as buttons) + selected stage's details ── */}
+          <main className={styles.mainDetail}>
+            <div className={styles.stagesHeader}>
               <span className={styles.sidebarTitle}>{t('stagesListTitle')}</span>
+              <Select
+                className={styles.stagesFilter}
+                value={resultFilter}
+                onChange={(v) => setResultFilter(v)}
+                options={[
+                  { value: 'all', label: t('filterAll') },
+                  { value: '1', label: t('statusPending') },
+                  { value: '2', label: t('statusCompleted') },
+                  { value: '3', label: t('statusFailed') },
+                  { value: '4', label: t('statusSkipped') },
+                ]}
+              />
             </div>
-            <Select
-              className={styles.sidebarFilter}
-              value={resultFilter}
-              onChange={(v) => setResultFilter(v)}
-              style={{ width: '100%' }}
-              options={[
-                { value: 'all', label: t('filterAll') },
-                { value: '1', label: t('statusPending') },
-                { value: '2', label: t('statusCompleted') },
-                { value: '3', label: t('statusFailed') },
-                { value: '4', label: t('statusSkipped') },
-              ]}
-            />
-            <div className={styles.sidebarList}>
+            <div className={styles.stageButtonsRow}>
               {filteredItems.length === 0 ? (
                 <Empty description={t('noItemsForFilter')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
               ) : (
                 filteredItems.map((item) => (
-                  <SidebarItem
+                  <StageChip
                     key={item.id}
                     item={item}
                     idx={sortedItems.findIndex((i) => i.id === item.id)}
@@ -261,10 +258,9 @@ export default function ContractFollowUpDetailPage() {
                 ))
               )}
             </div>
-          </aside>
 
-          {/* ── Center: selected stage details ── */}
-          <main className={styles.mainDetail}>
+            <Divider style={{ margin: '16px 0' }} />
+
             {selectedItem ? (
               <StageDetailPanel
                 item={selectedItem}
@@ -280,6 +276,41 @@ export default function ContractFollowUpDetailPage() {
               </Card>
             )}
           </main>
+
+          {/* ── Side: contract status timeline (§3.6 — "الحالات على جنب") ── */}
+          <aside className={styles.sidebar}>
+            <div className={styles.sidebarHeader}>
+              <span className={styles.sidebarTitle}>
+                <HistoryOutlined style={{ marginInlineEnd: 8 }} />
+                {t('timelineTitle')}
+              </span>
+            </div>
+            {card?.timeline && card.timeline.length > 0 ? (
+              <div className={styles.timelineScroll}>
+                <Timeline
+                  items={card.timeline.map((event) => ({
+                    color: event.isCurrent ? 'blue' : 'gray',
+                    children: (
+                      <div>
+                        <div style={{ fontWeight: event.isCurrent ? 700 : 400 }}>
+                          {(isRTL ? event.statusNameAr : event.statusNameEn) || '—'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                          {formatDate(event.date, isRTL ? 'ar' : 'en')}
+                          {event.createdByName ? ` · ${event.createdByName}` : ''}
+                        </div>
+                        {event.notes && (
+                          <div style={{ fontSize: 12, color: '#595959' }}>{event.notes}</div>
+                        )}
+                      </div>
+                    ),
+                  }))}
+                />
+              </div>
+            ) : (
+              <Empty description={t('noTimeline')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
+          </aside>
         </div>
       )}
 
@@ -391,60 +422,6 @@ function SummaryHeader({
   );
 }
 
-// ── Contract status history — Frontend_AutomaticFollowUp_README.md §3.6 ───────
-
-function ContractTimeline({
-  t,
-  isRTL,
-  timeline,
-  loading,
-}: {
-  t: (k: string) => string;
-  isRTL: boolean;
-  timeline: FollowUpTimelineEvent[] | undefined;
-  loading: boolean;
-}) {
-  if (!loading && (!timeline || timeline.length === 0)) return null;
-
-  return (
-    <Card
-      className={styles.summaryCard}
-      size="small"
-      loading={loading}
-      title={
-        <span>
-          <HistoryOutlined style={{ marginInlineEnd: 8 }} />
-          {t('timelineTitle')}
-        </span>
-      }
-    >
-      {timeline && timeline.length > 0 ? (
-        <Timeline
-          items={timeline.map((event) => ({
-            color: event.isCurrent ? 'blue' : 'gray',
-            children: (
-              <div>
-                <div style={{ fontWeight: event.isCurrent ? 700 : 400 }}>
-                  {(isRTL ? event.statusNameAr : event.statusNameEn) || '—'}
-                </div>
-                <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-                  {formatDate(event.date, isRTL ? 'ar' : 'en')}
-                  {event.createdByName ? ` · ${event.createdByName}` : ''}
-                </div>
-                {event.notes && (
-                  <div style={{ fontSize: 12, color: '#595959' }}>{event.notes}</div>
-                )}
-              </div>
-            ),
-          }))}
-        />
-      ) : (
-        <Empty description={t('noTimeline')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      )}
-    </Card>
-  );
-}
-
 // ── Extract status label from inputDescription JSON ───────────────────────────
 
 function getInputDescriptionStatusLabel(item: MediationFollowUpItem): string | null {
@@ -475,9 +452,9 @@ function getInputDescriptionStatusLabel(item: MediationFollowUpItem): string | n
   return found?.labelAr ?? String(value);
 }
 
-// ── Sidebar stage row ──────────────────────────────────────────────────────
+// ── Stage chip — "أزرار" per Frontend_AutomaticFollowUp_README.md §3.7/§4 ─────
 
-function SidebarItem({
+function StageChip({
   item,
   idx,
   isRTL,
@@ -498,11 +475,11 @@ function SidebarItem({
   return (
     <button
       type="button"
-      className={`${styles.sidebarItem} ${isActive ? styles.sidebarItemActive : ''} ${isSettled ? styles.sidebarItemSettled : ''}`}
+      className={`${styles.stageButton} ${isActive ? styles.stageButtonActive : ''} ${isSettled ? styles.stageButtonSettled : ''}`}
       onClick={onClick}
     >
       <span className={styles.sidebarItemIndex}>{idx + 1}</span>
-      <span className={styles.sidebarItemName}>{name || '—'}</span>
+      <span>{name || '—'}</span>
       <span className={styles.sidebarItemDot} style={{ background: resultDotColor(item.result) }} />
     </button>
   );
