@@ -376,6 +376,20 @@
   box-shadow: 0 2px 8px rgba(0, 51, 102, 0.15);
 }
 
+/* Destructive actions (End Worker Service / Cancel) — .actionBtn's !important
+   color rules would otherwise override antd's native danger styling. */
+.actionBtnDanger {
+  color: #ff4d4f !important;
+  border-color: #ffccc7 !important;
+}
+
+.actionBtnDanger:hover {
+  background: #fff1f0 !important;
+  border-color: #ff4d4f !important;
+  color: #ff4d4f !important;
+  box-shadow: 0 2px 8px rgba(255, 77, 79, 0.15);
+}
+
 /* ── Pagination ── */
 .paginationBar {
   display: flex;

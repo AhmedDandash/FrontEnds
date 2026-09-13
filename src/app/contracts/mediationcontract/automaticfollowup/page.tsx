@@ -771,7 +771,7 @@ export default function AutomaticFollowUpPage() {
                     type="link"
                     danger
                     icon={<UserDeleteOutlined />}
-                    className={styles.actionBtn}
+                    className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
                     onClick={() => {
                       endServiceForm.resetFields();
                       setEndServiceRow(row);
@@ -787,7 +787,7 @@ export default function AutomaticFollowUpPage() {
                     type="link"
                     danger
                     icon={<CloseCircleOutlined />}
-                    className={styles.actionBtn}
+                    className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
                     onClick={() => {
                       cancelForm.resetFields();
                       setCancelRow(row);
