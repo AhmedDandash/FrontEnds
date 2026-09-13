@@ -61,6 +61,8 @@ function useT(language: string) {
       dob: { ar: 'تاريخ الميلاد', en: 'Date of Birth' },
       customerNationality: { ar: 'جنسية العميل', en: 'Customer Nationality' },
       workerNationality: { ar: 'جنسية العامل', en: 'Worker Nationality' },
+      workerStatus: { ar: 'حالة العامل', en: 'Worker Status' },
+      offerAmount: { ar: 'العرض', en: 'Offer' },
       musanedNumber: { ar: 'رقم مساند', en: 'Musaned No.' },
       status: { ar: 'الحالة', en: 'Status' },
       dateFrom: { ar: 'من تاريخ', en: 'Date From' },
@@ -387,6 +389,8 @@ export default function AutomaticFollowUpPage() {
         : null;
       const customerNationality = row.highlights?.customerNationality;
       const customerNationalId = row.highlights?.customerNationalId;
+      const workerStatus =
+        language === 'ar' ? row.header?.workerStatusNameAr : row.header?.workerStatusNameEn ?? row.header?.workerStatusNameAr;
 
       return (
         <Card key={row.id ?? Math.random().toString()} className={styles.followUpCard} hoverable>
@@ -412,6 +416,7 @@ export default function AutomaticFollowUpPage() {
                 {row.header?.contractCategoryName && (
                   <Tag color="geekblue">{row.header.contractCategoryName}</Tag>
                 )}
+                {workerStatus && <Tag color="purple">{workerStatus}</Tag>}
               </div>
 
               {/* Customer row — always shown per the highlights contract, even
@@ -517,6 +522,15 @@ export default function AutomaticFollowUpPage() {
                     <span className={styles.mono}>{row.musanedContractNumber || '—'}</span>
                   </span>
                 </div>
+                {row.offer?.offerAmount != null && (
+                  <div className={styles.statRow}>
+                    <span className={styles.statDot} style={{ background: '#faad14' }} />
+                    <span className={styles.statLabel}>{t('offerAmount')}</span>
+                    <span className={styles.statValue} style={{ color: '#faad14' }}>
+                      {row.offer.offerAmount.toLocaleString()}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Date */}

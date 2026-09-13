@@ -31,6 +31,10 @@ import {
   FileTextOutlined,
   SolutionOutlined,
   HistoryOutlined,
+  PhoneOutlined,
+  EnvironmentOutlined,
+  DollarOutlined,
+  HeartOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/authStore';
 import { APP_PERMISSIONS } from '@/config/appPermissions';
@@ -51,7 +55,7 @@ import type {
   MediationFollowUpItem,
   MediationFollowUpDashboardCard as FollowUpCard,
 } from '@/types/api.types';
-import { formatDate } from '../../_lib/format';
+import { formatDate, formatCurrency } from '../../_lib/format';
 import styles from './ContractFollowUpDetail.module.css';
 
 // ── Translations ──────────────────────────────────────────────────────────────
@@ -97,8 +101,24 @@ function useT(language: string) {
       summaryAgentName: { ar: 'اسم الوكيل', en: 'Agent Name' },
       summaryContractNumber: { ar: 'رقم العقد', en: 'Contract No.' },
       summaryMusanedNumber: { ar: 'رقم مساند', en: 'Musaned No.' },
+      summaryCustomerPhone: { ar: 'جوال العميل', en: 'Customer Phone' },
+      summaryCustomerCity: { ar: 'مدينة العميل', en: 'Customer City' },
+      summaryWorkerStatus: { ar: 'حالة العامل', en: 'Worker Status' },
+      summaryWorkerAge: { ar: 'عمر العامل', en: 'Worker Age' },
+      summaryWorkerReligion: { ar: 'ديانة العامل', en: 'Worker Religion' },
+      summaryCurrentStage: { ar: 'المرحلة الحالية', en: 'Current Stage' },
+      summaryDaysSinceUpdate: { ar: 'أيام منذ آخر تحديث', en: 'Days Since Last Update' },
       timelineTitle: { ar: 'الجدول الزمني للعقد', en: 'Contract Timeline' },
       noTimeline: { ar: 'لا يوجد سجل حالات لهذا العقد', en: 'No status history for this contract' },
+      offerTitle: { ar: 'بيانات العرض', en: 'Offer Details' },
+      offerAmount: { ar: 'العرض', en: 'Offer' },
+      otherCosts: { ar: 'أخرى', en: 'Other Costs' },
+      offerSalary: { ar: 'الراتب', en: 'Salary' },
+      taxValue: { ar: 'الضريبة', en: 'Tax' },
+      offerTotalCost: { ar: 'الإجمالي', en: 'Total' },
+      totalPaid: { ar: 'المدفوع', en: 'Paid' },
+      remainingAmount: { ar: 'المتبقي', en: 'Remaining' },
+      offerPaymentStatus: { ar: 'حالة السداد', en: 'Payment Status' },
     };
     return (key: string) => map[key]?.[language] ?? map[key]?.['en'] ?? key;
   }, [language]);
@@ -218,6 +238,7 @@ export default function ContractFollowUpDetailPage() {
           highlights (DOB, nationalities, national ID, passport, agent) shown up
           front, per the client's "مثل شاشة مساعد" request ── */}
       <SummaryHeader t={t} isRTL={isRTL} card={card} loading={isLoading && !card} />
+      <OfferSummary t={t} isRTL={isRTL} card={card} loading={isLoading && !card} />
 
       {!isLoading && sortedItems.length === 0 ? (
         <div className={styles.centered}>
@@ -393,10 +414,12 @@ function SummaryHeader({
 }) {
   const highlights = card?.highlights;
   const header = card?.header;
+  const worker = card?.worker;
   const dob = formatDate(highlights?.customerBirthDate, isRTL ? 'ar' : 'en');
   const nationality = highlights?.customerNationality;
   const workerNationality = isRTL ? highlights?.workerNationalityAr : highlights?.workerNationalityEn;
   const agentName = header?.agentName || highlights?.agentName;
+  const workerStatus = isRTL ? header?.workerStatusNameAr : header?.workerStatusNameEn ?? header?.workerStatusNameAr;
 
   return (
     <Card className={styles.summaryCard} size="small" loading={loading}>
@@ -414,10 +437,60 @@ function SummaryHeader({
         )}
         <SummaryItem icon={<GlobalOutlined />} label={t('summaryClientNationality')} value={nationality} />
         <SummaryItem icon={<IdcardOutlined />} label={t('summaryClientNationalId')} value={highlights?.customerNationalId} />
+        <SummaryItem icon={<PhoneOutlined />} label={t('summaryCustomerPhone')} value={header?.customerPhone} />
+        <SummaryItem icon={<EnvironmentOutlined />} label={t('summaryCustomerCity')} value={header?.customerCity} />
         <SummaryItem icon={<GlobalOutlined />} label={t('summaryWorkerNationality')} value={workerNationality} />
         <SummaryItem icon={<IdcardOutlined />} label={t('summaryWorkerPassport')} value={highlights?.workerPassportNumber} />
+        <SummaryItem icon={<UserOutlined />} label={t('summaryWorkerStatus')} value={workerStatus} />
+        <SummaryItem icon={<CalendarOutlined />} label={t('summaryWorkerAge')} value={worker?.age} />
+        <SummaryItem icon={<HeartOutlined />} label={t('summaryWorkerReligion')} value={worker?.religionNameAr} />
         <SummaryItem icon={<SolutionOutlined />} label={t('summaryAgentName')} value={agentName} />
+        <SummaryItem icon={<ClockCircleOutlined />} label={t('summaryCurrentStage')} value={card?.currentFollowUpStatusNameAr} />
+        <SummaryItem icon={<HistoryOutlined />} label={t('summaryDaysSinceUpdate')} value={card?.daysSinceLastUpdate} />
       </div>
+    </Card>
+  );
+}
+
+// ── Offer figures — Frontend_AutomaticFollowUp_README.md §3.4 ─────────────────
+
+function OfferSummary({
+  t,
+  isRTL,
+  card,
+  loading,
+}: {
+  t: (k: string) => string;
+  isRTL: boolean;
+  card: FollowUpCard | undefined;
+  loading: boolean;
+}) {
+  const offer = card?.offer;
+  if (!loading && !offer) return null;
+  const fmt = (v: number | null | undefined) => formatCurrency(v, isRTL ? 'ar' : 'en');
+
+  return (
+    <Card
+      className={styles.summaryCard}
+      size="small"
+      loading={loading}
+      title={
+        <span>
+          <DollarOutlined style={{ marginInlineEnd: 8 }} />
+          {t('offerTitle')}
+        </span>
+      }
+    >
+      <Descriptions column={{ xs: 1, sm: 2, md: 4 }} size="small" bordered>
+        <Descriptions.Item label={t('offerAmount')}>{fmt(offer?.offerAmount)}</Descriptions.Item>
+        <Descriptions.Item label={t('otherCosts')}>{fmt(offer?.otherCosts)}</Descriptions.Item>
+        <Descriptions.Item label={t('offerSalary')}>{fmt(offer?.salary)}</Descriptions.Item>
+        <Descriptions.Item label={t('taxValue')}>{fmt(offer?.totalTaxValue)}</Descriptions.Item>
+        <Descriptions.Item label={t('offerTotalCost')}>{fmt(offer?.totalCost)}</Descriptions.Item>
+        <Descriptions.Item label={t('totalPaid')}>{fmt(offer?.totalPaid)}</Descriptions.Item>
+        <Descriptions.Item label={t('remainingAmount')}>{fmt(offer?.remainingAmount)}</Descriptions.Item>
+        <Descriptions.Item label={t('offerPaymentStatus')}>{offer?.paymentStatus || '—'}</Descriptions.Item>
+      </Descriptions>
     </Card>
   );
 }
