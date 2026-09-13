@@ -56,8 +56,11 @@ function useT(language: string) {
       workerName: { ar: 'اسم العامل', en: 'Worker Name' },
       passportNumber: { ar: 'رقم الجواز', en: 'Passport No.' },
       customerName: { ar: 'اسم العميل', en: 'Customer' },
-      nationalId: { ar: 'رقم الهوية', en: 'National ID' },
+      nationalId: { ar: 'رقم هوية العميل', en: 'Customer National ID' },
       nationality: { ar: 'الجنسية', en: 'Nationality' },
+      dob: { ar: 'تاريخ الميلاد', en: 'Date of Birth' },
+      customerNationality: { ar: 'جنسية العميل', en: 'Customer Nationality' },
+      workerNationality: { ar: 'جنسية العامل', en: 'Worker Nationality' },
       musanedNumber: { ar: 'رقم مساند', en: 'Musaned No.' },
       status: { ar: 'الحالة', en: 'Status' },
       dateFrom: { ar: 'من تاريخ', en: 'Date From' },
@@ -376,9 +379,14 @@ export default function AutomaticFollowUpPage() {
       const lastUpdated = row.lastUpdatedAt
         ? new Date(row.lastUpdatedAt).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB')
         : '—';
-      const nationality =
+      const workerNationality =
         language === 'ar' ? row.highlights?.workerNationalityAr : row.highlights?.workerNationalityEn;
       const agentName = row.header?.agentName || row.highlights?.agentName;
+      const customerBirthDate = row.highlights?.customerBirthDate
+        ? new Date(row.highlights.customerBirthDate).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB')
+        : null;
+      const customerNationality = row.highlights?.customerNationality;
+      const customerNationalId = row.highlights?.customerNationalId;
 
       return (
         <Card key={row.id ?? Math.random().toString()} className={styles.followUpCard} hoverable>
@@ -419,7 +427,10 @@ export default function AutomaticFollowUpPage() {
                 </div>
               </div>
 
-              {/* Extra details */}
+              {/* Extra details — the highlights the client asked to always show
+                  up front, not gated behind stage completion: DOB, customer
+                  nationality, worker nationality, customer national ID, worker
+                  passport (above), agent name. */}
               <div className={styles.detailsSection}>
                 {agentName && (
                   <div className={styles.detailItem}>
@@ -430,12 +441,39 @@ export default function AutomaticFollowUpPage() {
                     </div>
                   </div>
                 )}
-                {nationality && (
+                {customerBirthDate && (
+                  <div className={styles.detailItem}>
+                    <CalendarOutlined className={styles.detailIcon} />
+                    <div className={styles.detailText}>
+                      <span className={styles.detailLabel}>{t('dob')}</span>
+                      <span className={styles.detailValue}>{customerBirthDate}</span>
+                    </div>
+                  </div>
+                )}
+                {customerNationality && (
                   <div className={styles.detailItem}>
                     <GlobalOutlined className={styles.detailIcon} />
                     <div className={styles.detailText}>
-                      <span className={styles.detailLabel}>{t('nationality')}</span>
-                      <span className={styles.detailValue}>{nationality}</span>
+                      <span className={styles.detailLabel}>{t('customerNationality')}</span>
+                      <span className={styles.detailValue}>{customerNationality}</span>
+                    </div>
+                  </div>
+                )}
+                {workerNationality && (
+                  <div className={styles.detailItem}>
+                    <GlobalOutlined className={styles.detailIcon} />
+                    <div className={styles.detailText}>
+                      <span className={styles.detailLabel}>{t('workerNationality')}</span>
+                      <span className={styles.detailValue}>{workerNationality}</span>
+                    </div>
+                  </div>
+                )}
+                {customerNationalId && (
+                  <div className={styles.detailItem}>
+                    <IdcardOutlined className={styles.detailIcon} />
+                    <div className={styles.detailText}>
+                      <span className={styles.detailLabel}>{t('nationalId')}</span>
+                      <span className={styles.detailValue}>{customerNationalId}</span>
                     </div>
                   </div>
                 )}
