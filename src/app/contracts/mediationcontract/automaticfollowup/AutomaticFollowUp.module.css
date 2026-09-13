@@ -316,6 +316,7 @@
 .datesSection {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   padding: 10px 12px;
   background: white;
   border-radius: 6px;

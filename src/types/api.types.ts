@@ -2004,6 +2004,18 @@ export interface FollowUpDashboardOffer {
   paymentStatus?: string | null;
 }
 
+/** Subset of customer fields the detail screen shows (§3.5/§7) — same data as `highlights`. */
+export interface FollowUpDashboardCustomerInfo {
+  nationalId?: string | null;
+  nationality?: string | null;
+  birthDate?: string | null;
+}
+
+/** Subset of agent fields the detail screen shows (§3.5/§7) — same data as `highlights.agentName`. */
+export interface FollowUpDashboardAgentInfo {
+  nameAr?: string | null;
+}
+
 /** Subset of worker fields the detail screen shows (§3.5). */
 export interface FollowUpDashboardWorkerInfo {
   passportNumber?: string | null;
@@ -2050,9 +2062,14 @@ export interface MediationFollowUpDashboardCard {
   header: FollowUpDashboardHeader;
   offer: FollowUpDashboardOffer;
   /** Full detail-screen objects — the list/card view only needs highlights+header. */
-  customer?: Record<string, any> | null;
+  customer?: FollowUpDashboardCustomerInfo | null;
   worker?: FollowUpDashboardWorkerInfo | null;
-  agent?: Record<string, any> | null;
+  agent?: FollowUpDashboardAgentInfo | null;
+  /**
+   * The spec doc names no fields for `visa` (§3.5 only says "full objects"; the
+   * §7 TypeScript sample omits it entirely) — the one documented visa datum is
+   * `header.visaNumber`. Left loose on purpose: do not guess field names.
+   */
   visa?: Record<string, any> | null;
   timeline: FollowUpTimelineEvent[];
   followUpStages: MediationFollowUpItem[];

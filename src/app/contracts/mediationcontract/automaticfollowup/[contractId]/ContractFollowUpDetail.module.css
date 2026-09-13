@@ -40,6 +40,59 @@
   border-radius: 8px;
 }
 
+/* ── Identity strip (contract number + contract status) ── */
+.summaryTopRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.summaryAvatar {
+  background: linear-gradient(135deg, #003366 0%, #00478c 100%);
+  flex-shrink: 0;
+}
+
+.summaryHeadline {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.summaryContractNo {
+  font-size: 22px;
+  font-weight: 800;
+  color: #003366;
+  line-height: 1.2;
+}
+
+.summaryHeadlineSub {
+  font-size: 13px;
+  color: #595959;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summaryTags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-inline-start: auto;
+}
+
+.summaryStatusTag {
+  font-size: 14px;
+  font-weight: 700;
+  padding-inline: 12px;
+  padding-block: 3px;
+  border-radius: 6px;
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -128,6 +181,12 @@
   color: #003366;
 }
 
+.sidebarSubtitle {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-top: 2px;
+}
+
 .sidebarItemIndex {
   display: inline-flex;
   align-items: center;
@@ -204,6 +263,12 @@
 
 .stageButtonSettled {
   opacity: 0.85;
+}
+
+/* Stage matching `currentFollowUpItemId` — visual distinction per spec §3.7 */
+.stageButtonCurrent {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
 }
 
 /* ── Center detail panel ── */

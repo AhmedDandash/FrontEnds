@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Button,
@@ -27,6 +27,12 @@ import {
   GlobalOutlined,
   CalendarOutlined,
   FileTextOutlined,
+  PhoneOutlined,
+  MailOutlined,
+  EnvironmentOutlined,
+  SafetyCertificateOutlined,
+  SolutionOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/authStore';
 import { AdvancedFilterPanel, DateRangeFilter } from '@/components/filters';
@@ -41,6 +47,7 @@ import type {
   MediationFollowUpDashboardParams,
   MediationFollowUpDashboardCard,
 } from '@/types/api.types';
+import { formatCurrency, formatDate } from '../_lib/format';
 import styles from './AutomaticFollowUp.module.css';
 
 type BooleanFilter = 'all' | 'true' | 'false';
@@ -85,9 +92,76 @@ function useT(language: string) {
       lastUpdated: { ar: 'آخر تحديث', en: 'Last Updated' },
       agent: { ar: 'الوكيل', en: 'Agent' },
       visaDateLabel: { ar: 'تاريخ التأشيرة', en: 'Visa Date' },
+      dobHijri: { ar: 'تاريخ الميلاد (هجري)', en: 'Date of Birth (Hijri)' },
+      customerPhone: { ar: 'جوال العميل', en: 'Customer Phone' },
+      customerEmail: { ar: 'البريد الإلكتروني', en: 'Email' },
+      customerCity: { ar: 'مدينة العميل', en: 'Customer City' },
+      visaNumber: { ar: 'رقم التأشيرة', en: 'Visa Number' },
+      workerPassport: { ar: 'رقم جواز العامل', en: 'Worker Passport No.' },
+      currentStage: { ar: 'المرحلة الحالية', en: 'Current Stage' },
+      daysSinceUpdate: { ar: 'أيام منذ آخر تحديث', en: 'Days Since Update' },
+      workerExternal: {
+        ar: 'جواز معلق — العامل غير مسجّل',
+        en: 'Passport pending — worker not registered',
+      },
+      totalCost: { ar: 'إجمالي العقد', en: 'Total' },
+      totalPaid: { ar: 'المدفوع', en: 'Paid' },
+      remainingAmount: { ar: 'المتبقي', en: 'Remaining' },
+      paymentStatus: { ar: 'حالة السداد', en: 'Payment Status' },
     };
     return (key: string) => map[key]?.[language] ?? map[key]?.['en'] ?? key;
   }, [language]);
+}
+
+// ── Card building blocks ──────────────────────────────────────────────────────
+
+/**
+ * One labelled row in the card's details column. A null/blank value renders as
+ * "—" rather than hiding the row — Frontend_AutomaticFollowUp_README.md §3.2
+ * ("أي قيمة null اعرضها —"), so the same facts sit in the same place on
+ * every card regardless of how much of the contract has been filled in.
+ */
+function CardDetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className={styles.detailItem}>
+      {icon}
+      <div className={styles.detailText}>
+        <span className={styles.detailLabel}>{label}</span>
+        <span className={styles.detailValue}>
+          {value === null || value === undefined || value === '' ? '—' : value}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** One row of the right-hand stats breakdown. */
+function CardStatRow({
+  color,
+  label,
+  value,
+}: {
+  color: string;
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className={styles.statRow}>
+      <span className={styles.statDot} style={{ background: color }} />
+      <span className={styles.statLabel}>{label}</span>
+      <span className={styles.statValue} style={{ color }}>
+        {value}
+      </span>
+    </div>
+  );
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -377,20 +451,24 @@ export default function AutomaticFollowUpPage() {
   const renderCard = useCallback(
     (row: MediationFollowUpDashboardCard) => {
       const id = row.id;
+      const lang = language === 'ar' ? 'ar' : 'en';
       const statusName = language === 'ar' ? row.statusNameAr : row.statusNameEn ?? row.statusNameAr;
-      const lastUpdated = row.lastUpdatedAt
-        ? new Date(row.lastUpdatedAt).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB')
-        : '—';
+      const lastUpdated = row.lastUpdatedAt ? formatDate(row.lastUpdatedAt, lang) : '—';
+      // `customer`/`agent` hold the same data as `highlights` (§3.5) — used as a
+      // fallback so a field still shows if only one of the two is populated.
       const workerNationality =
-        language === 'ar' ? row.highlights?.workerNationalityAr : row.highlights?.workerNationalityEn;
-      const agentName = row.header?.agentName || row.highlights?.agentName;
-      const customerBirthDate = row.highlights?.customerBirthDate
-        ? new Date(row.highlights.customerBirthDate).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB')
-        : null;
-      const customerNationality = row.highlights?.customerNationality;
-      const customerNationalId = row.highlights?.customerNationalId;
+        (language === 'ar' ? row.highlights?.workerNationalityAr : row.highlights?.workerNationalityEn) ??
+        row.worker?.nationalityAr;
+      const agentName = row.header?.agentName || row.highlights?.agentName || row.agent?.nameAr;
+      const birthDate = row.highlights?.customerBirthDate ?? row.customer?.birthDate;
+      const customerBirthDate = birthDate ? formatDate(birthDate, lang) : null;
+      const customerNationality = row.highlights?.customerNationality ?? row.customer?.nationality;
+      const customerNationalId = row.highlights?.customerNationalId ?? row.customer?.nationalId;
+      const workerPassport = row.highlights?.workerPassportNumber ?? row.worker?.passportNumber;
       const workerStatus =
         language === 'ar' ? row.header?.workerStatusNameAr : row.header?.workerStatusNameEn ?? row.header?.workerStatusNameAr;
+      const stages = row.followUpStages ?? [];
+      const completedStages = stages.filter((stage) => stage.result === 2).length;
 
       return (
         <Card key={row.id ?? Math.random().toString()} className={styles.followUpCard} hoverable>
@@ -417,6 +495,7 @@ export default function AutomaticFollowUpPage() {
                   <Tag color="geekblue">{row.header.contractCategoryName}</Tag>
                 )}
                 {workerStatus && <Tag color="purple">{workerStatus}</Tag>}
+                {row.worker?.isExternal && <Tag color="orange">{t('workerExternal')}</Tag>}
               </div>
 
               {/* Customer row — always shown per the highlights contract, even
@@ -427,61 +506,69 @@ export default function AutomaticFollowUpPage() {
                   <span className={styles.customerName}>{row.header?.customerName || '—'}</span>
                   <div className={styles.customerMeta}>
                     <IdcardOutlined />
-                    <span dir="ltr">{row.highlights?.workerPassportNumber || '—'}</span>
+                    <span>{t('workerPassport')}:</span>
+                    <span dir="ltr">{workerPassport || '—'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Extra details — the highlights the client asked to always show
-                  up front, not gated behind stage completion: DOB, customer
-                  nationality, worker nationality, customer national ID, worker
-                  passport (above), agent name. */}
+                  up front, not gated behind stage completion: agent name, DOB
+                  (+ Hijri), customer nationality, worker nationality, customer
+                  national ID, worker passport (above) — plus the `header`
+                  contact block (phone, email, city, visa number). Rows always
+                  render, with "—" for a missing value (§3.2). */}
               <div className={styles.detailsSection}>
-                {agentName && (
-                  <div className={styles.detailItem}>
-                    <UserOutlined className={styles.detailIcon} />
-                    <div className={styles.detailText}>
-                      <span className={styles.detailLabel}>{t('agent')}</span>
-                      <span className={styles.detailValue}>{agentName}</span>
-                    </div>
-                  </div>
-                )}
-                {customerBirthDate && (
-                  <div className={styles.detailItem}>
-                    <CalendarOutlined className={styles.detailIcon} />
-                    <div className={styles.detailText}>
-                      <span className={styles.detailLabel}>{t('dob')}</span>
-                      <span className={styles.detailValue}>{customerBirthDate}</span>
-                    </div>
-                  </div>
-                )}
-                {customerNationality && (
-                  <div className={styles.detailItem}>
-                    <GlobalOutlined className={styles.detailIcon} />
-                    <div className={styles.detailText}>
-                      <span className={styles.detailLabel}>{t('customerNationality')}</span>
-                      <span className={styles.detailValue}>{customerNationality}</span>
-                    </div>
-                  </div>
-                )}
-                {workerNationality && (
-                  <div className={styles.detailItem}>
-                    <GlobalOutlined className={styles.detailIcon} />
-                    <div className={styles.detailText}>
-                      <span className={styles.detailLabel}>{t('workerNationality')}</span>
-                      <span className={styles.detailValue}>{workerNationality}</span>
-                    </div>
-                  </div>
-                )}
-                {customerNationalId && (
-                  <div className={styles.detailItem}>
-                    <IdcardOutlined className={styles.detailIcon} />
-                    <div className={styles.detailText}>
-                      <span className={styles.detailLabel}>{t('nationalId')}</span>
-                      <span className={styles.detailValue}>{customerNationalId}</span>
-                    </div>
-                  </div>
-                )}
+                <CardDetailRow
+                  icon={<SolutionOutlined className={styles.detailIcon} />}
+                  label={t('agent')}
+                  value={agentName}
+                />
+                <CardDetailRow
+                  icon={<CalendarOutlined className={styles.detailIcon} />}
+                  label={t('dob')}
+                  value={customerBirthDate}
+                />
+                <CardDetailRow
+                  icon={<CalendarOutlined className={styles.detailIcon} />}
+                  label={t('dobHijri')}
+                  value={row.highlights?.customerBirthDateHijri}
+                />
+                <CardDetailRow
+                  icon={<GlobalOutlined className={styles.detailIcon} />}
+                  label={t('customerNationality')}
+                  value={customerNationality}
+                />
+                <CardDetailRow
+                  icon={<GlobalOutlined className={styles.detailIcon} />}
+                  label={t('workerNationality')}
+                  value={workerNationality}
+                />
+                <CardDetailRow
+                  icon={<IdcardOutlined className={styles.detailIcon} />}
+                  label={t('nationalId')}
+                  value={customerNationalId}
+                />
+                <CardDetailRow
+                  icon={<PhoneOutlined className={styles.detailIcon} />}
+                  label={t('customerPhone')}
+                  value={row.header?.customerPhone}
+                />
+                <CardDetailRow
+                  icon={<MailOutlined className={styles.detailIcon} />}
+                  label={t('customerEmail')}
+                  value={row.header?.customerEmail}
+                />
+                <CardDetailRow
+                  icon={<EnvironmentOutlined className={styles.detailIcon} />}
+                  label={t('customerCity')}
+                  value={row.header?.customerCity}
+                />
+                <CardDetailRow
+                  icon={<SafetyCertificateOutlined className={styles.detailIcon} />}
+                  label={t('visaNumber')}
+                  value={row.header?.visaNumber}
+                />
               </div>
             </div>
 
@@ -508,37 +595,77 @@ export default function AutomaticFollowUpPage() {
 
               {/* Stats breakdown */}
               <div className={styles.statsBreakdown}>
-                <div className={styles.statRow}>
-                  <span className={styles.statDot} style={{ background: '#003366' }} />
-                  <span className={styles.statLabel}>{t('contractNumber')}</span>
-                  <span className={styles.statValue} style={{ color: '#003366' }}>
-                    #{row.contractNumber ?? '—'}
-                  </span>
-                </div>
-                <div className={styles.statRow}>
-                  <span className={styles.statDot} style={{ background: '#52c41a' }} />
-                  <span className={styles.statLabel}>{t('musanedNumber')}</span>
-                  <span className={styles.statValue} style={{ color: '#52c41a' }}>
-                    <span className={styles.mono}>{row.musanedContractNumber || '—'}</span>
-                  </span>
-                </div>
+                <CardStatRow
+                  color="#003366"
+                  label={t('contractNumber')}
+                  value={`#${row.contractNumber ?? '—'}`}
+                />
+                <CardStatRow
+                  color="#52c41a"
+                  label={t('musanedNumber')}
+                  value={<span className={styles.mono}>{row.musanedContractNumber || '—'}</span>}
+                />
+                <CardStatRow
+                  color="#722ed1"
+                  label={t('currentStage')}
+                  value={row.currentFollowUpStatusNameAr || '—'}
+                />
+                {stages.length > 0 && (
+                  <CardStatRow
+                    color="#1677ff"
+                    label={t('progress')}
+                    value={<span dir="ltr">{completedStages}/{stages.length}</span>}
+                  />
+                )}
                 {row.offer?.offerAmount != null && (
-                  <div className={styles.statRow}>
-                    <span className={styles.statDot} style={{ background: '#faad14' }} />
-                    <span className={styles.statLabel}>{t('offerAmount')}</span>
-                    <span className={styles.statValue} style={{ color: '#faad14' }}>
-                      {row.offer.offerAmount.toLocaleString()}
-                    </span>
-                  </div>
+                  <CardStatRow
+                    color="#faad14"
+                    label={t('offerAmount')}
+                    value={formatCurrency(row.offer.offerAmount, lang)}
+                  />
+                )}
+                {row.offer?.totalCost != null && (
+                  <CardStatRow
+                    color="#003366"
+                    label={t('totalCost')}
+                    value={formatCurrency(row.offer.totalCost, lang)}
+                  />
+                )}
+                {row.offer?.totalPaid != null && (
+                  <CardStatRow
+                    color="#52c41a"
+                    label={t('totalPaid')}
+                    value={formatCurrency(row.offer.totalPaid, lang)}
+                  />
+                )}
+                {row.offer?.remainingAmount != null && (
+                  <CardStatRow
+                    color="#fa541c"
+                    label={t('remainingAmount')}
+                    value={formatCurrency(row.offer.remainingAmount, lang)}
+                  />
+                )}
+                {row.offer?.paymentStatus && (
+                  <CardStatRow
+                    color="#13c2c2"
+                    label={t('paymentStatus')}
+                    value={row.offer.paymentStatus}
+                  />
                 )}
               </div>
 
-              {/* Date */}
+              {/* Dates */}
               <div className={styles.datesSection}>
                 <div className={styles.dateItem}>
                   <CalendarOutlined />
                   <span>{t('lastUpdated')}: {lastUpdated}</span>
                 </div>
+                {row.daysSinceLastUpdate != null && (
+                  <div className={styles.dateItem}>
+                    <ClockCircleOutlined />
+                    <span>{t('daysSinceUpdate')}: {row.daysSinceLastUpdate}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

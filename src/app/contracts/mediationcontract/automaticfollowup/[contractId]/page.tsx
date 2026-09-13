@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
+  Avatar,
   Button,
   Spin,
   Empty,
@@ -27,6 +28,7 @@ import {
   UserOutlined,
   IdcardOutlined,
   GlobalOutlined,
+  FileProtectOutlined,
   CalendarOutlined,
   FileTextOutlined,
   SolutionOutlined,
@@ -35,6 +37,9 @@ import {
   EnvironmentOutlined,
   DollarOutlined,
   HeartOutlined,
+  MailOutlined,
+  SafetyCertificateOutlined,
+  TagOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/authStore';
 import { APP_PERMISSIONS } from '@/config/appPermissions';
@@ -55,6 +60,7 @@ import type {
   MediationFollowUpItem,
   MediationFollowUpDashboardCard as FollowUpCard,
 } from '@/types/api.types';
+import { resolveImageUrl } from '@/utils/image';
 import { formatDate, formatCurrency } from '../../_lib/format';
 import styles from './ContractFollowUpDetail.module.css';
 
@@ -108,6 +114,16 @@ function useT(language: string) {
       summaryWorkerReligion: { ar: 'ديانة العامل', en: 'Worker Religion' },
       summaryCurrentStage: { ar: 'المرحلة الحالية', en: 'Current Stage' },
       summaryDaysSinceUpdate: { ar: 'أيام منذ آخر تحديث', en: 'Days Since Last Update' },
+      summaryLastUpdatedAt: { ar: 'تاريخ آخر تحديث', en: 'Last Updated On' },
+      summaryDaysSinceCreation: { ar: 'أيام منذ الإنشاء', en: 'Days Since Creation' },
+      summaryContractStatus: { ar: 'حالة العقد', en: 'Contract Status' },
+      summaryVisaNumber: { ar: 'رقم التأشيرة', en: 'Visa Number' },
+      summaryCustomerEmail: { ar: 'البريد الإلكتروني', en: 'Email' },
+      summaryContractCategory: { ar: 'فئة العقد', en: 'Contract Category' },
+      workerExternal: {
+        ar: 'جواز معلق — العامل غير مسجّل',
+        en: 'Passport pending — worker not registered',
+      },
       timelineTitle: { ar: 'الجدول الزمني للعقد', en: 'Contract Timeline' },
       noTimeline: { ar: 'لا يوجد سجل حالات لهذا العقد', en: 'No status history for this contract' },
       offerTitle: { ar: 'بيانات العرض', en: 'Offer Details' },
@@ -145,6 +161,25 @@ function resultDotColor(result: number | null | undefined): string {
     case 3: return '#ff4d4f';
     case 4: return '#8c8c8c';
     default: return '#1677ff';
+  }
+}
+
+/**
+ * Contract-status tag colour. Codes are the `statusId` values listed in
+ * Frontend_AutomaticFollowUp_README.md §6.
+ */
+function contractStatusColor(statusId: number | null | undefined): string {
+  switch (statusId) {
+    case 13: // تم التسليم
+    case 15: // اكتمال العقد
+      return 'success';
+    case 14: // فترة الضمان
+    case 16: // تم إرجاع العاملة
+      return 'warning';
+    case 17: // ملغي
+      return 'error';
+    default:
+      return 'processing';
   }
 }
 
@@ -274,6 +309,7 @@ export default function ContractFollowUpDetailPage() {
                     idx={sortedItems.findIndex((i) => i.id === item.id)}
                     isRTL={isRTL}
                     isActive={item.id === selectedItemId}
+                    isCurrent={!!item.id && item.id === card?.currentFollowUpItemId}
                     onClick={() => setSelectedItemId(item.id ?? null)}
                   />
                 ))
@@ -288,6 +324,7 @@ export default function ContractFollowUpDetailPage() {
                 idx={sortedItems.findIndex((i) => i.id === selectedItem.id)}
                 isRTL={isRTL}
                 t={t}
+                isCurrent={!!selectedItem.id && selectedItem.id === card?.currentFollowUpItemId}
                 onFillForm={openInputForm}
                 canManage={canManageFollowUp}
               />
@@ -305,6 +342,12 @@ export default function ContractFollowUpDetailPage() {
                 <HistoryOutlined style={{ marginInlineEnd: 8 }} />
                 {t('timelineTitle')}
               </span>
+              {/* §3.6: show the contract's Musaned number alongside the statuses. */}
+              {card?.musanedContractNumber && (
+                <div className={styles.sidebarSubtitle}>
+                  {t('summaryMusanedNumber')}: {card.musanedContractNumber}
+                </div>
+              )}
             </div>
             {card?.timeline && card.timeline.length > 0 ? (
               <div className={styles.timelineScroll}>
@@ -395,7 +438,10 @@ function SummaryItem({
       <span className={styles.summaryIcon}>{icon}</span>
       <div className={styles.summaryText}>
         <span className={styles.summaryLabel}>{label}</span>
-        <span className={styles.summaryValue}>{value ?? '—'}</span>
+        {/* §3.2: render a null/blank value as "—", never hide the field. */}
+        <span className={styles.summaryValue}>
+          {value === null || value === undefined || value === '' ? '—' : value}
+        </span>
       </div>
     </div>
   );
@@ -415,38 +461,72 @@ function SummaryHeader({
   const highlights = card?.highlights;
   const header = card?.header;
   const worker = card?.worker;
-  const dob = formatDate(highlights?.customerBirthDate, isRTL ? 'ar' : 'en');
-  const nationality = highlights?.customerNationality;
-  const workerNationality = isRTL ? highlights?.workerNationalityAr : highlights?.workerNationalityEn;
-  const agentName = header?.agentName || highlights?.agentName;
+  // `customer`/`agent` carry the same data as `highlights` (§3.5) — used as a
+  // fallback so a field still shows if only one of the two blocks is populated.
+  const customer = card?.customer;
+  const agent = card?.agent;
+  const lang = isRTL ? 'ar' : 'en';
+  const birthDate = highlights?.customerBirthDate ?? customer?.birthDate;
+  // Blank rather than formatDate's "-" placeholder, so SummaryItem renders "—".
+  const dob = birthDate ? formatDate(birthDate, lang) : null;
+  const lastUpdatedAt = card?.lastUpdatedAt ? formatDate(card.lastUpdatedAt, lang) : null;
+  const nationality = highlights?.customerNationality ?? customer?.nationality;
+  const nationalId = highlights?.customerNationalId ?? customer?.nationalId;
+  const workerNationality =
+    (isRTL ? highlights?.workerNationalityAr : highlights?.workerNationalityEn) ??
+    worker?.nationalityAr;
+  const workerPassport = highlights?.workerPassportNumber ?? worker?.passportNumber;
+  const agentName = header?.agentName || highlights?.agentName || agent?.nameAr;
   const workerStatus = isRTL ? header?.workerStatusNameAr : header?.workerStatusNameEn ?? header?.workerStatusNameAr;
+  const statusName = (isRTL ? card?.statusNameAr : card?.statusNameEn ?? card?.statusNameAr) || null;
 
   return (
     <Card className={styles.summaryCard} size="small" loading={loading}>
+      {/* Identity strip — contract number + the contract's own status, so the
+          detail screen states it without a trip back to the dashboard. */}
+      <div className={styles.summaryTopRow}>
+        <Avatar
+          size={56}
+          src={resolveImageUrl(worker?.photoUrl)}
+          icon={<UserOutlined />}
+          className={styles.summaryAvatar}
+        />
+        <div className={styles.summaryHeadline}>
+          <span className={styles.summaryContractNo}>#{card?.contractNumber ?? '—'}</span>
+          <span className={styles.summaryHeadlineSub}>{header?.customerName || '—'}</span>
+        </div>
+        <div className={styles.summaryTags}>
+          <Tag color={contractStatusColor(card?.statusId)} className={styles.summaryStatusTag}>
+            {statusName || '—'}
+          </Tag>
+          {worker?.isExternal && <Tag color="orange">{t('workerExternal')}</Tag>}
+        </div>
+      </div>
+
       <div className={styles.summaryGrid}>
-        {card?.contractNumber != null && (
-          <SummaryItem icon={<FileTextOutlined />} label={t('summaryContractNumber')} value={`#${card.contractNumber}`} />
-        )}
-        {card?.musanedContractNumber && (
-          <SummaryItem icon={<FileTextOutlined />} label={t('summaryMusanedNumber')} value={card.musanedContractNumber} />
-        )}
+        <SummaryItem icon={<FileTextOutlined />} label={t('summaryContractNumber')} value={card?.contractNumber != null ? `#${card.contractNumber}` : '—'} />
+        <SummaryItem icon={<FileTextOutlined />} label={t('summaryMusanedNumber')} value={card?.musanedContractNumber} />
+        <SummaryItem icon={<FileProtectOutlined />} label={t('summaryContractStatus')} value={statusName} />
         <SummaryItem icon={<UserOutlined />} label={t('summaryCustomerName')} value={header?.customerName} />
         <SummaryItem icon={<CalendarOutlined />} label={t('summaryDob')} value={dob} />
-        {highlights?.customerBirthDateHijri && (
-          <SummaryItem icon={<CalendarOutlined />} label={t('summaryDobHijri')} value={highlights.customerBirthDateHijri} />
-        )}
+        <SummaryItem icon={<CalendarOutlined />} label={t('summaryDobHijri')} value={highlights?.customerBirthDateHijri} />
         <SummaryItem icon={<GlobalOutlined />} label={t('summaryClientNationality')} value={nationality} />
-        <SummaryItem icon={<IdcardOutlined />} label={t('summaryClientNationalId')} value={highlights?.customerNationalId} />
+        <SummaryItem icon={<IdcardOutlined />} label={t('summaryClientNationalId')} value={nationalId} />
         <SummaryItem icon={<PhoneOutlined />} label={t('summaryCustomerPhone')} value={header?.customerPhone} />
+        <SummaryItem icon={<MailOutlined />} label={t('summaryCustomerEmail')} value={header?.customerEmail} />
         <SummaryItem icon={<EnvironmentOutlined />} label={t('summaryCustomerCity')} value={header?.customerCity} />
+        <SummaryItem icon={<SafetyCertificateOutlined />} label={t('summaryVisaNumber')} value={header?.visaNumber} />
         <SummaryItem icon={<GlobalOutlined />} label={t('summaryWorkerNationality')} value={workerNationality} />
-        <SummaryItem icon={<IdcardOutlined />} label={t('summaryWorkerPassport')} value={highlights?.workerPassportNumber} />
+        <SummaryItem icon={<IdcardOutlined />} label={t('summaryWorkerPassport')} value={workerPassport} />
         <SummaryItem icon={<UserOutlined />} label={t('summaryWorkerStatus')} value={workerStatus} />
         <SummaryItem icon={<CalendarOutlined />} label={t('summaryWorkerAge')} value={worker?.age} />
         <SummaryItem icon={<HeartOutlined />} label={t('summaryWorkerReligion')} value={worker?.religionNameAr} />
         <SummaryItem icon={<SolutionOutlined />} label={t('summaryAgentName')} value={agentName} />
+        <SummaryItem icon={<TagOutlined />} label={t('summaryContractCategory')} value={header?.contractCategoryName} />
         <SummaryItem icon={<ClockCircleOutlined />} label={t('summaryCurrentStage')} value={card?.currentFollowUpStatusNameAr} />
+        <SummaryItem icon={<CalendarOutlined />} label={t('summaryDaysSinceCreation')} value={card?.daysSinceCreation} />
         <SummaryItem icon={<HistoryOutlined />} label={t('summaryDaysSinceUpdate')} value={card?.daysSinceLastUpdate} />
+        <SummaryItem icon={<HistoryOutlined />} label={t('summaryLastUpdatedAt')} value={lastUpdatedAt} />
       </div>
     </Card>
   );
@@ -532,12 +612,15 @@ function StageChip({
   idx,
   isRTL,
   isActive,
+  isCurrent,
   onClick,
 }: {
   item: MediationFollowUpItem;
   idx: number;
   isRTL: boolean;
   isActive: boolean;
+  /** Matches `currentFollowUpItemId` — flagged visually per §3.7. */
+  isCurrent: boolean;
   onClick: () => void;
 }) {
   const name = isRTL
@@ -548,7 +631,7 @@ function StageChip({
   return (
     <button
       type="button"
-      className={`${styles.stageButton} ${isActive ? styles.stageButtonActive : ''} ${isSettled ? styles.stageButtonSettled : ''}`}
+      className={`${styles.stageButton} ${isActive ? styles.stageButtonActive : ''} ${isSettled ? styles.stageButtonSettled : ''} ${isCurrent ? styles.stageButtonCurrent : ''}`}
       onClick={onClick}
     >
       <span className={styles.sidebarItemIndex}>{idx + 1}</span>
@@ -655,6 +738,7 @@ function StageDetailPanel({
   idx,
   isRTL,
   t,
+  isCurrent,
   onFillForm,
   canManage,
 }: {
@@ -662,6 +746,8 @@ function StageDetailPanel({
   idx: number;
   isRTL: boolean;
   t: (k: string) => string;
+  /** Matches `currentFollowUpItemId` — flagged visually per §3.7. */
+  isCurrent: boolean;
   onFillForm: (item: MediationFollowUpItem) => void;
   canManage: boolean;
 }) {
@@ -680,6 +766,7 @@ function StageDetailPanel({
         <div className={styles.mainDetailHeaderLeft}>
           <span className={styles.mainDetailIndex}>{idx + 1}</span>
           <h2 className={styles.mainDetailTitle}>{name || '—'}</h2>
+          {isCurrent && <Tag color="blue">{t('summaryCurrentStage')}</Tag>}
         </div>
         {inputStatusLabel ? <Tag color="blue">{inputStatusLabel}</Tag> : resultTag(item.result, t)}
       </div>
@@ -709,7 +796,7 @@ function StageDetailPanel({
         {item.completedAt && (
           <span className={styles.metaItem}>
             <span className={styles.metaLabel}>{t('completedAt')}:</span>{' '}
-            {new Date(item.completedAt).toLocaleDateString()}
+            {formatDate(item.completedAt, isRTL ? 'ar' : 'en')}
           </span>
         )}
       </div>
